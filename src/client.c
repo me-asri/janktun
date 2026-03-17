@@ -213,6 +213,7 @@ int jank_client_run(jank_client_ctx_t* ctx)
 
     size_t i;
 
+    log_i("Domain: %s - Max length: %zu", ctx->domain, ctx->max_domain_len);
     log_i("Downstream socket listening on %s",
         net_sockname_to_str(ctx->ds_sockfd));
     log_i("Inbound socket listening on %s",

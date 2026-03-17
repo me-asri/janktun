@@ -1,10 +1,12 @@
 #include "args.h"
 
+#include <stdlib.h>
 #include <stddef.h>
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
 
+#include <errno.h>
 #include <strings.h>
 #include <unistd.h>
 
@@ -17,6 +19,8 @@
 
 #define DEFAULT_DNS_LISTEN_ADDR "[::]:53"
 #define DEFAULT_LOG_LEVEL LOG_INFO
+
+static int parse_size_str(const char* str, size_t* out);
 
 static void print_usage(FILE* stream, const char* progname);
 static void print_error(const char* progname, const char* fmt, ...);
@@ -119,6 +123,10 @@ int parse_client_args(jank_args_t* args, int argc, char** argv)
             args->client.resolvers[resolver_count] = NULL;
             break;
         case 'L':
+            if (parse_size_str(optarg, &args->client.max_domain_len) != 0) {
+                print_error(argv[0], "Invalid domain length value '%s'", optarg);
+                return -1;
+            }
             break;
         case 's':
             args->client.ds_src_addr = optarg;
@@ -218,4 +226,18 @@ void print_error(const char* progname, const char* fmt, ...)
     print_usage(stderr, progname);
 
     funlockfile(stderr);
+}
+
+int parse_size_str(const char* str, size_t* out)
+{
+    char* endptr = NULL;
+    size_t num;
+
+    errno = 0;
+    num = strtoul(str, &endptr, 10);
+    if (*endptr != '\0' || errno == ERANGE) {
+        return 1;
+    }
+    *out = num;
+    return 0;
 }
