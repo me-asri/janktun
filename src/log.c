@@ -60,6 +60,11 @@ int log_level_parse(const char* str, log_level_t* level)
     return 1;
 }
 
+const char* log_level_str(log_level_t level)
+{
+    return LEVEL_STR[level];
+}
+
 void _log(log_level_t type, int print_errno, const char* file, int line, const char* format, ...)
 {
     time_t timer;

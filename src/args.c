@@ -180,15 +180,15 @@ int parse_client_args(jank_args_t* args, int argc, char** argv)
 void print_usage(FILE* stream, const char* progname)
 {
     /* clang-format off */
-    static const char USAGE[] = "Usage: %s [OPERATION] [OPTION...]\n"
+    static const char USAGE[] = "Usage: %1$s [OPERATION] [OPTION...]\n"
                                 "\n"
                                 "Options:\n"
                                 "   -n <domain>       domain name\n"
                                 "   -v <verbosity>    set logging verbosity "
 #ifndef NDEBUG
-                                "(TRACE, DEBUG, INFO, ERROR - default: " STR(DEFAULT_LOG_LEVEL) ")\n"
+                                "(TRACE, DEBUG, INFO, ERROR - default: %2$s)\n"
 #else
-                                "(DEBUG, INFO, ERROR - default: INFO)\n"
+                                "(DEBUG, INFO, ERROR - default: %2$s)\n"
 #endif
                                 "   -h                show this help message\n"
                                 "\n"
@@ -209,7 +209,7 @@ void print_usage(FILE* stream, const char* progname)
                                 "   -L <length>       maximum domain length (default: " STR(DNS_MAX_DOMAIN_LEN) ")\n"
                                 "   -r <addr[:port]>  resolver(s), can be specified multiple times up to " STR(CLIENT_MAX_RESOLVERS) " times\n";
     /* clang-format on */
-    fprintf(stream, USAGE, progname);
+    fprintf(stream, USAGE, progname, log_level_str(DEFAULT_LOG_LEVEL));
 }
 
 void print_error(const char* progname, const char* fmt, ...)

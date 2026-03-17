@@ -12,8 +12,14 @@ typedef enum {
 
 extern log_level_t _log_level;
 
+/* Initialize logger */
 void log_init(log_level_t level);
+
+/* Parse log level from string */
 int log_level_parse(const char* str, log_level_t* level);
+
+/* Get string name of log level */
+const char* log_level_str(log_level_t level);
 
 void _log(log_level_t type, int print_errno, const char* file, int line, const char* format, ...);
 
