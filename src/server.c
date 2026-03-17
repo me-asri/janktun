@@ -76,6 +76,12 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
         elog_e("Failed to create DNS socket");
         goto err_close_epoll;
     }
+    if (saddr.ss_family == AF_INET6) {
+        optval = 0;
+        if (setsockopt(ctx->dns_sockfd, SOL_IPV6, IPV6_V6ONLY, &optval, sizeof(optval)) != 0) {
+            elog_w("Failed to disable V6 only on DNS socket");
+        }
+    }
     optval = DNS_SOCK_SNDBUF;
     if (setsockopt(ctx->dns_sockfd, SOL_SOCKET, SO_SNDBUF, &optval, sizeof(optval)) != 0) {
         elog_w("Failed to increase send buffer for DNS socket");
