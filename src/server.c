@@ -477,7 +477,7 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     /* TODO: duplicate session detection */
     proto_ret = frag_assembler_assemble(&asm_session->assembler, &assembled, &assembled_len);
     if (proto_ret == PROTOERR_SUCCESS) {
-        log_i("Assembled payload of length %zu for S%u", assembled_len, asm_session->session_id);
+        log_d("Assembled payload of length %zu for S%u", assembled_len, asm_session->session_id);
         asm_session_evict(ctx, asm_session);
 
     retry_send:
