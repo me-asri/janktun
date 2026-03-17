@@ -58,7 +58,7 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
     }
     strcpy(ctx->domain, domain);
 
-    ctx->active_asm_sessions = 0;
+    U256_BIT_ZERO_INITIALIZE(ctx->active_asm_sessions);
 
     ctx->epollfd = epoll_create1(0);
     if (ctx->epollfd < 0) {
@@ -502,7 +502,7 @@ asm_session_t* asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id)
     ssize_t index;
     asm_session_t* session = NULL;
 
-    U128_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
+    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
     {
         if (ctx->asm_sessions[index].session_id == session_id) {
             session = &ctx->asm_sessions[index];
@@ -510,7 +510,7 @@ asm_session_t* asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id)
         }
     }
     if (!session) {
-        index = U128_BIT_FIRST_UNSET(ctx->active_asm_sessions);
+        index = U256_BIT_FIRST_UNSET(ctx->active_asm_sessions);
         if (index < 0) {
             return NULL;
         }
@@ -519,7 +519,7 @@ asm_session_t* asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id)
         session->session_id = session_id;
         session->timestamp = 0;
         frag_assembler_init(&ctx->asm_sessions[index].assembler);
-        U128_BIT_SET(ctx->active_asm_sessions, index);
+        U256_BIT_SET(ctx->active_asm_sessions, index);
     }
     return session;
 }
@@ -528,10 +528,10 @@ void asm_session_evict(jank_server_ctx_t* ctx, asm_session_t* session)
 {
     ssize_t index;
 
-    U128_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
+    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
     {
         if (&ctx->asm_sessions[index] == session) {
-            U128_BIT_CLEAR(ctx->active_asm_sessions, index);
+            U256_BIT_CLEAR(ctx->active_asm_sessions, index);
             log_t("Evicted assembler session %u", session->session_id);
             break;
         }
@@ -544,11 +544,11 @@ void asm_session_evict_expired(jank_server_ctx_t* ctx)
     uint64_t timestamp;
 
     timestamp = timestamp_mono();
-    U128_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
+    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
     {
         if (timestamp - ctx->asm_sessions[index].timestamp >= ASM_SESSION_EXPIRY) {
             log_t("Evicting expired assembler session %u", ctx->asm_sessions[index].session_id);
-            U128_BIT_CLEAR(ctx->active_asm_sessions, index);
+            U256_BIT_CLEAR(ctx->active_asm_sessions, index);
         }
     }
 }

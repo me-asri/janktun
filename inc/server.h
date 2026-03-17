@@ -1,9 +1,10 @@
 #pragma once
 
+#include "bits.h"
 #include "dns.h"
 #include "protocol.h"
 
-#define MAX_ASM_SESSIONS 128
+#define MAX_ASM_SESSIONS 256
 
 typedef struct {
     uint32_t session_id;
@@ -21,7 +22,7 @@ typedef struct {
 
     int epollfd;
 
-    __uint128_t active_asm_sessions;
+    u256_bits_t active_asm_sessions;
     asm_session_t asm_sessions[MAX_ASM_SESSIONS];
 } jank_server_ctx_t;
 
