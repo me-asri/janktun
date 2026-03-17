@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <strings.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 
@@ -33,8 +34,9 @@ static int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events);
 static int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events);
 static void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len);
 
-static asm_session_t* asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id);
-static void asm_session_evict(jank_server_ctx_t* ctx, asm_session_t* session);
+static ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
+static ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
+void asm_session_evict(jank_server_ctx_t* ctx, size_t index);
 static void asm_session_evict_expired(jank_server_ctx_t* ctx);
 
 int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
@@ -449,6 +451,8 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     asm_session_t* asm_session;
     char* assembled;
     size_t assembled_len;
+
+    ssize_t asm_session_idx;
     protoerr_t proto_ret;
     ssize_t ret;
 
@@ -459,16 +463,24 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
         return;
     }
 
-    asm_session = asm_session_find(ctx, md.session_id);
-    if (!asm_session) {
-        log_e("No assembly session available for %u", md.session_id);
-        return;
+    asm_session_idx = asm_session_find(ctx, md.session_id, &asm_session);
+    if (asm_session_idx < 0) {
+        asm_session_idx = asm_session_alloc(ctx, md.session_id, &asm_session);
+        if (asm_session_idx < 0) {
+            log_w("No assembler available for S%u", md.session_id);
+            return;
+        }
     }
 
     proto_ret = frag_assembler_add(&asm_session->assembler, md.frag_idx, md.last_frag,
         payload, payload_len);
+    if (proto_ret == PROTOERR_DUP) {
+        log_t("Dropping duplicate from #%u on S%u", md.frag_idx, md.session_id);
+        return;
+    }
     if (proto_ret != PROTOERR_SUCCESS) {
-        log_e("Failed to add fragment #%u to S%u", md.frag_idx, md.session_id);
+        log_e("Failed to add fragment #%u to S%u: ", md.frag_idx, md.session_id, proto_ret);
+        asm_session_evict(ctx, asm_session_idx);
         return;
     }
     asm_session->timestamp = timestamp_mono();
@@ -478,7 +490,7 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     proto_ret = frag_assembler_assemble(&asm_session->assembler, &assembled, &assembled_len);
     if (proto_ret == PROTOERR_SUCCESS) {
         log_d("Assembled payload of length %zu for S%u", assembled_len, asm_session->session_id);
-        asm_session_evict(ctx, asm_session);
+        asm_session_evict(ctx, asm_session_idx);
 
     retry_send:
         ret = send(ctx->dest_sockfd, assembled, assembled_len, 0);
@@ -494,48 +506,44 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
         }
     } else if (proto_ret != PROTOERR_INCOMPLETE) {
         log_e("Failed to assemble fragments for S%u: %d", md.session_id, proto_ret);
+        asm_session_evict(ctx, asm_session_idx);
     }
 }
 
-asm_session_t* asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id)
+ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session)
 {
     ssize_t index;
-    asm_session_t* session = NULL;
-
     U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
     {
         if (ctx->asm_sessions[index].session_id == session_id) {
-            session = &ctx->asm_sessions[index];
-            break;
+            *session = &ctx->asm_sessions[index];
+            return index;
         }
     }
-    if (!session) {
-        index = U256_BIT_FIRST_UNSET(ctx->active_asm_sessions);
-        if (index < 0) {
-            return NULL;
-        }
-        session = &ctx->asm_sessions[index];
-
-        session->session_id = session_id;
-        session->timestamp = 0;
-        frag_assembler_init(&ctx->asm_sessions[index].assembler);
-        U256_BIT_SET(ctx->active_asm_sessions, index);
-    }
-    return session;
+    return -1;
 }
 
-void asm_session_evict(jank_server_ctx_t* ctx, asm_session_t* session)
+ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session)
 {
     ssize_t index;
-
-    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
-    {
-        if (&ctx->asm_sessions[index] == session) {
-            U256_BIT_CLEAR(ctx->active_asm_sessions, index);
-            log_t("Evicted assembler session %u", session->session_id);
-            break;
-        }
+    index = U256_BIT_FIRST_UNSET(ctx->active_asm_sessions);
+    if (index < 0) {
+        return -1;
     }
+
+    ctx->asm_sessions[index].session_id = session_id;
+    ctx->asm_sessions[index].timestamp = 0;
+    frag_assembler_init(&ctx->asm_sessions[index].assembler);
+    *session = &ctx->asm_sessions[index];
+
+    U256_BIT_SET(ctx->active_asm_sessions, index);
+    return index;
+}
+
+void asm_session_evict(jank_server_ctx_t* ctx, size_t index)
+{
+    U256_BIT_CLEAR(ctx->active_asm_sessions, index);
+    log_t("Evicted assembler #%zu", index);
 }
 
 void asm_session_evict_expired(jank_server_ctx_t* ctx)
@@ -547,8 +555,8 @@ void asm_session_evict_expired(jank_server_ctx_t* ctx)
     U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
     {
         if (timestamp - ctx->asm_sessions[index].timestamp >= ASM_SESSION_EXPIRY) {
-            log_t("Evicting expired assembler session %u", ctx->asm_sessions[index].session_id);
             U256_BIT_CLEAR(ctx->active_asm_sessions, index);
+            log_t("Evicted expired assembler S%u", ctx->asm_sessions[index].session_id);
         }
     }
 }
