@@ -36,7 +36,7 @@ static void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain
 
 static ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
 static ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
-void asm_session_evict(jank_server_ctx_t* ctx, size_t index);
+static void asm_session_evict(jank_server_ctx_t* ctx, size_t index);
 static void asm_session_evict_expired(jank_server_ctx_t* ctx);
 
 int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
