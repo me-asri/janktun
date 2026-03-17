@@ -131,8 +131,7 @@ int jank_client_init(jank_client_ctx_t* ctx,
         if (setsockopt(ctx->ds_sockfd, SOL_IPV6, IPV6_V6ONLY,
                 &optval, sizeof(optval))
             != 0) {
-            elog_w("Failed to disable V6 only on downstream socket");
-            goto err_close_dns;
+            elog_w("Failed to disable V6-only on downstream socket");
         }
     }
     if (bind(ctx->ds_sockfd, (struct sockaddr*)&saddr, saddrlen) != 0) {
@@ -170,6 +169,14 @@ int jank_client_init(jank_client_ctx_t* ctx,
     if (ctx->inbound_sockfd < 0) {
         elog_e("Failed to create inbound socket");
         goto err_close_ds;
+    }
+    if (saddr.ss_family == AF_INET6) {
+        optval = 0;
+        if (setsockopt(ctx->inbound_sockfd, SOL_IPV6, IPV6_V6ONLY,
+                &optval, sizeof(optval))
+            != 0) {
+            elog_w("Failed to disable V6-only on inbound socket");
+        }
     }
     if (bind(ctx->inbound_sockfd, (struct sockaddr*)&saddr, saddrlen) != 0) {
         elog_e("Failed to bind inbound socket");
