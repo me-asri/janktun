@@ -369,7 +369,7 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
     int error = 0;
     socklen_t errorlen = sizeof(error);
 
-    char buf[UDP_BUFSIZE];
+    char buf[PROTO_MAX_DATAGRAM];
     struct sockaddr_storage saddr;
     socklen_t saddrlen;
     ssize_t ret;

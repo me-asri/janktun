@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 
+#include "bits.h"
 #include "dns.h"
 
 /* [Base] (dot) [7 (32-bit metadata)] + (dot) */
@@ -18,6 +19,9 @@
 
 /* Maximum number of fragments */
 #define PROTO_FRAG_MAX 64
+
+/* Maximum size of datagram fittable in a DNS query */
+#define PROTO_MAX_DATAGRAM (PROTO_FRAG_LEN_MAX * PROTO_FRAG_MAX)
 
 typedef struct {
     union {
@@ -40,7 +44,7 @@ typedef enum {
 } protoerr_t;
 
 typedef struct {
-    uint64_t received_frags;
+    bitset64_t received_frags;
     size_t max_frag_count;
     size_t max_frag_size;
     size_t last_frag_size;

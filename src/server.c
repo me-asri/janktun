@@ -67,7 +67,7 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
     }
     strcpy(ctx->domain, domain);
 
-    U256_BIT_ZERO_INITIALIZE(ctx->active_asm_sessions);
+    U256_BIT_ZERO_INIT(ctx->active_asm_sessions);
     ctx->session_hist.head = 0;
     ctx->session_hist.tail = 0;
     ctx->session_hist.count = 0;

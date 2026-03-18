@@ -236,7 +236,7 @@ ssize_t base32_delim_encode(const char* buf, size_t buflen, char* out,
 
 void frag_assembler_init(frag_assembler_t* assembler)
 {
-    assembler->received_frags = 0;
+    U64_BIT_ZERO_INIT(assembler->received_frags);
     assembler->max_frag_size = 0;
     assembler->max_frag_count = 0;
     assembler->last_frag_size = 0;

@@ -5,7 +5,7 @@
 #include "protocol.h"
 
 #define MAX_ASM_SESSIONS 256
-#define MAX_SESSION_HIST 1024
+#define MAX_SESSION_HIST 512
 
 typedef struct {
     uint32_t session_id;
@@ -36,7 +36,7 @@ typedef struct {
 
     int epollfd;
 
-    u256_bits_t active_asm_sessions;
+    bitset256_t active_asm_sessions;
     asm_session_t asm_sessions[MAX_ASM_SESSIONS];
 
     session_hist_t session_hist;
