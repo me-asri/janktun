@@ -5,12 +5,26 @@
 #include "protocol.h"
 
 #define MAX_ASM_SESSIONS 256
+#define MAX_SESSION_HIST 1024
 
 typedef struct {
     uint32_t session_id;
     uint64_t timestamp;
     frag_assembler_t assembler;
 } asm_session_t;
+
+typedef struct {
+    uint32_t session_id;
+    uint64_t timestamp;
+} session_hist_entry_t;
+
+typedef struct {
+    session_hist_entry_t entries[MAX_SESSION_HIST];
+
+    size_t head;
+    size_t tail;
+    size_t count;
+} session_hist_t;
 
 typedef struct {
     char domain[DNS_MAX_DOMAIN_LEN + 1];
@@ -24,6 +38,8 @@ typedef struct {
 
     u256_bits_t active_asm_sessions;
     asm_session_t asm_sessions[MAX_ASM_SESSIONS];
+
+    session_hist_t session_hist;
 } jank_server_ctx_t;
 
 /* Initialize janktun server context */

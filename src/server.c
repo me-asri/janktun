@@ -29,15 +29,22 @@
 
 #define EXPIRY_TIMER_INTERVAL 1000
 #define ASM_SESSION_EXPIRY 5000
+#define SESSION_HIST_EXPIRY 10000
 
 static int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events);
 static int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events);
-static void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len);
+static bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len);
 
 static ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
 static ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
 static void asm_session_evict(jank_server_ctx_t* ctx, size_t index);
-static void asm_session_evict_expired(jank_server_ctx_t* ctx);
+
+static void session_hist_push(jank_server_ctx_t* ctx, uint32_t session_id, uint64_t timestamp);
+static void session_hist_pop(jank_server_ctx_t* ctx);
+static session_hist_entry_t* session_hist_peek(jank_server_ctx_t* ctx);
+static session_hist_entry_t* session_hist_find(jank_server_ctx_t* ctx, uint32_t session_id);
+
+static void handle_expiry(jank_server_ctx_t* ctx);
 
 int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
     const char* dns_listen_addr, const char* ds_addr,
@@ -61,6 +68,9 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
     strcpy(ctx->domain, domain);
 
     U256_BIT_ZERO_INITIALIZE(ctx->active_asm_sessions);
+    ctx->session_hist.head = 0;
+    ctx->session_hist.tail = 0;
+    ctx->session_hist.count = 0;
 
     ctx->epollfd = epoll_create1(0);
     if (ctx->epollfd < 0) {
@@ -257,7 +267,7 @@ int jank_server_run(jank_server_ctx_t* ctx)
                     goto err_close_timer;
                 }
 
-                asm_session_evict_expired(ctx);
+                handle_expiry(ctx);
             } else if (events[i].data.fd == sigfd) {
                 if (sigfd_read(events[i].data.fd, &signo) <= 0) {
                     elog_e("Failed to read signals");
@@ -360,7 +370,10 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
                     net_saddr_to_str((struct sockaddr*)&saddr), domain);
                 rcode = RCODE_REFUSED;
             } else {
-                handle_dns_query(ctx, domain, domain_len);
+                if (!handle_dns_query(ctx, domain, domain_len)) {
+                    log_d("DNS query handler rejected query, not sending response");
+                    continue;
+                }
                 rcode = RCODE_NXDOMAIN;
             }
 
@@ -441,7 +454,7 @@ int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events)
     return 0;
 }
 
-void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
+bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
 {
     metadata_t md;
 
@@ -460,7 +473,12 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
         ctx->domain, ctx->domain_len, &md, payload, sizeof(payload));
     if (payload_len < 0) {
         log_w("Failed to extract paylaod from domain: %d", payload_len);
-        return;
+        return false;
+    }
+
+    if (session_hist_find(ctx, md.session_id)) {
+        log_d("Ingoring duplicate session %u", md.session_id);
+        return false;
     }
 
     asm_session_idx = asm_session_find(ctx, md.session_id, &asm_session);
@@ -468,7 +486,7 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
         asm_session_idx = asm_session_alloc(ctx, md.session_id, &asm_session);
         if (asm_session_idx < 0) {
             log_w("No assembler available for S%u", md.session_id);
-            return;
+            return true;
         }
     }
 
@@ -476,12 +494,12 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
         payload, payload_len);
     if (proto_ret == PROTOERR_DUP) {
         log_t("Dropping duplicate from #%u on S%u", md.frag_idx, md.session_id);
-        return;
+        return false;
     }
     if (proto_ret != PROTOERR_SUCCESS) {
         log_e("Failed to add fragment #%u to S%u: ", md.frag_idx, md.session_id, proto_ret);
         asm_session_evict(ctx, asm_session_idx);
-        return;
+        return false;
     }
     asm_session->timestamp = timestamp_mono();
     log_t("Added fragment #%u of size %zd for S%u", md.frag_idx, payload_len, md.session_id);
@@ -489,7 +507,7 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     /* TODO: duplicate session detection */
     proto_ret = frag_assembler_assemble(&asm_session->assembler, &assembled, &assembled_len);
     if (proto_ret == PROTOERR_SUCCESS) {
-        log_d("Assembled payload of length %zu for S%u", assembled_len, asm_session->session_id);
+        log_t("Assembled payload of length %zu for S%u", assembled_len, asm_session->session_id);
         asm_session_evict(ctx, asm_session_idx);
 
     retry_send:
@@ -500,14 +518,17 @@ void handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
             }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 log_d("Destination socket send buffer full, dropping datagram");
-                return;
+                return true;
             }
             elog_e("Failed to send datagram on destination socket");
         }
+        return true;
     } else if (proto_ret != PROTOERR_INCOMPLETE) {
         log_e("Failed to assemble fragments for S%u: %d", md.session_id, proto_ret);
         asm_session_evict(ctx, asm_session_idx);
+        return false;
     }
+    return true;
 }
 
 ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session)
@@ -543,20 +564,81 @@ ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_sessi
 void asm_session_evict(jank_server_ctx_t* ctx, size_t index)
 {
     U256_BIT_CLEAR(ctx->active_asm_sessions, index);
+    session_hist_push(ctx, ctx->asm_sessions[index].session_id,
+        timestamp_mono());
     log_t("Evicted assembler #%zu", index);
 }
 
-void asm_session_evict_expired(jank_server_ctx_t* ctx)
+void session_hist_push(jank_server_ctx_t* ctx, uint32_t session_id, uint64_t timestamp)
+{
+    ctx->session_hist.entries[ctx->session_hist.tail].session_id = session_id;
+    ctx->session_hist.entries[ctx->session_hist.tail].timestamp = timestamp;
+
+    ctx->session_hist.tail = (ctx->session_hist.tail + 1) % MAX_SESSION_HIST;
+
+    if (ctx->session_hist.count == MAX_SESSION_HIST) {
+        ctx->session_hist.head = (ctx->session_hist.head + 1) % MAX_SESSION_HIST;
+    } else {
+        ctx->session_hist.count++;
+    }
+}
+
+void session_hist_pop(jank_server_ctx_t* ctx)
+{
+    if (ctx->session_hist.count == 0) {
+        return;
+    }
+
+    ctx->session_hist.head = (ctx->session_hist.head + 1) % MAX_SESSION_HIST;
+    ctx->session_hist.count--;
+}
+
+session_hist_entry_t* session_hist_peek(jank_server_ctx_t* ctx)
+{
+    if (ctx->session_hist.count == 0) {
+        return NULL;
+    }
+
+    return &ctx->session_hist.entries[ctx->session_hist.head];
+}
+
+session_hist_entry_t* session_hist_find(jank_server_ctx_t* ctx, uint32_t session_id)
+{
+    size_t index;
+    size_t i;
+
+    for (i = 0; i < ctx->session_hist.count; i++) {
+        index = (ctx->session_hist.head + i) % MAX_SESSION_HIST;
+        if (ctx->session_hist.entries[index].session_id == session_id) {
+            return &ctx->session_hist.entries[index];
+        }
+    }
+    return NULL;
+}
+
+void handle_expiry(jank_server_ctx_t* ctx)
 {
     ssize_t index;
     uint64_t timestamp;
+
+    session_hist_entry_t* hist_entry = NULL;
 
     timestamp = timestamp_mono();
     U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
     {
         if (timestamp - ctx->asm_sessions[index].timestamp >= ASM_SESSION_EXPIRY) {
             U256_BIT_CLEAR(ctx->active_asm_sessions, index);
+            session_hist_push(ctx, ctx->asm_sessions[index].session_id, timestamp);
             log_t("Evicted expired assembler S%u", ctx->asm_sessions[index].session_id);
+        }
+    }
+
+    while ((hist_entry = session_hist_peek(ctx))) {
+        if (timestamp - hist_entry->timestamp >= SESSION_HIST_EXPIRY) {
+            session_hist_pop(ctx);
+            log_t("Evicted session %u from history", hist_entry->session_id);
+        } else {
+            break;
         }
     }
 }
