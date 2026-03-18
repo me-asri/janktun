@@ -486,7 +486,7 @@ bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     if (asm_session_idx < 0) {
         asm_session_idx = asm_session_alloc(ctx, md.session_id, &asm_session);
         if (asm_session_idx < 0) {
-            log_w("No assembler available for S%u, reallocating oldest session", md.session_id);
+            log_d("No assembler available for S%u, reallocating oldest session", md.session_id);
             asm_session_idx = asm_session_realloc_oldest(ctx, md.session_id, &asm_session);
             if (asm_session_idx < 0) {
                 log_e("Failed to reallocate session");
