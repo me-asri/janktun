@@ -322,11 +322,13 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
 
     char query_buf[DNS_MIN_BUFSIZE];
     char reply_buf[DNS_MIN_BUFSIZE];
+    dnserr_t dns_ret;
+    ssize_t reply_size;
 
     struct sockaddr_storage saddr;
     socklen_t saddrlen;
     ssize_t recvd;
-    ssize_t ret;
+    ssize_t sent;
 
     char domain[DNS_MAX_DOMAIN_LEN + 1];
     size_t domain_len;
@@ -355,10 +357,10 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
             return -1;
         }
 
-        ret = dns_parse_query(query_buf, recvd, domain, sizeof(domain), &domain_len, NULL, NULL);
-        if (ret < 0) {
-            log_d("%s - Received invalid DNS query: %zd",
-                net_saddr_to_str((struct sockaddr*)&saddr), ret);
+        dns_ret = dns_parse_query(query_buf, recvd, domain, sizeof(domain), &domain_len, NULL, NULL);
+        if (dns_ret != DNSERR_SUCCESS) {
+            log_d("%s - Received invalid DNS query: %d",
+                net_saddr_to_str((struct sockaddr*)&saddr), dns_ret);
             return 0;
         }
         log_t("%s - Received DNS query for domain: %s",
@@ -378,15 +380,15 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
             rcode = RCODE_NXDOMAIN;
         }
 
-        ret = dns_compose_reply_empty(query_buf, recvd, rcode, reply_buf, sizeof(reply_buf));
-        if (ret < 0) {
+        reply_size = dns_compose_reply_empty(query_buf, recvd, rcode, reply_buf, sizeof(reply_buf));
+        if (reply_size < 0) {
             log_w("%s - Failed to compose DNS reply for domain %s: %zd",
-                net_saddr_to_str((struct sockaddr*)&saddr), domain, ret);
+                net_saddr_to_str((struct sockaddr*)&saddr), domain, reply_size);
             return 0;
         }
     retry_send:
-        ret = sendto(fd, reply_buf, ret, 0, (struct sockaddr*)&saddr, saddrlen);
-        if (ret < 0) {
+        sent = sendto(fd, reply_buf, reply_size, 0, (struct sockaddr*)&saddr, saddrlen);
+        if (sent < 0) {
             if (errno == EINTR) {
                 goto retry_send;
             }
@@ -408,7 +410,8 @@ int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events)
     socklen_t errorlen = sizeof(error);
 
     char buf[UDP_BUFSIZE];
-    ssize_t ret;
+    ssize_t recvd;
+    ssize_t sent;
 
     if (events & EPOLLERR) {
         if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errorlen) != 0) {
@@ -422,8 +425,8 @@ int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events)
     }
     if (events & EPOLLIN) {
     retry_recv:
-        ret = recv(fd, buf, sizeof(buf), 0);
-        if (ret < 0) {
+        recvd = recv(fd, buf, sizeof(buf), 0);
+        if (recvd < 0) {
             if (errno == EINTR) {
                 goto retry_recv;
             }
@@ -433,11 +436,11 @@ int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events)
             elog_e("Failed to receive datagram on destination socket");
             return -1;
         }
-        log_t("Received datagram of size %zd from destination", ret);
+        log_t("Received datagram of size %zd from destination", recvd);
 
     retry_send:
-        ret = send(ctx->ds_sockfd, buf, ret, 0);
-        if (ret < 0) {
+        sent = send(ctx->ds_sockfd, buf, recvd, 0);
+        if (sent < 0) {
             if (errno == EINTR) {
                 goto retry_send;
             }
@@ -448,7 +451,7 @@ int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events)
             elog_e("Failed to send datagram to downstream");
             return 1;
         }
-        log_t("Sent datagram of size %zd to downstream", ret);
+        log_t("Sent datagram of size %zd to downstream", sent);
     }
     return 0;
 }

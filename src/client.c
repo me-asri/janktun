@@ -307,7 +307,8 @@ int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events)
     char buf[UDP_BUFSIZE];
     struct sockaddr_storage saddr;
     socklen_t saddrlen;
-    ssize_t ret;
+    ssize_t recvd;
+    ssize_t sent;
 
     if (events & EPOLLERR) {
         if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errorlen) != 0) {
@@ -320,8 +321,8 @@ int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events)
     if (events & EPOLLIN) {
     retry_recv:
         saddrlen = sizeof(saddr);
-        ret = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
-        if (ret < 0) {
+        recvd = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
+        if (recvd < 0) {
             if (errno == EINTR) {
                 goto retry_recv;
             }
@@ -331,7 +332,7 @@ int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events)
             elog_e("Failed to receive datagram on downstream socket");
             return -1;
         }
-        log_t("Received datagram of size %zd from upstream", ret);
+        log_t("Received datagram of size %zd from upstream", recvd);
 
         if (!net_saddr_match((struct sockaddr*)&saddr, saddrlen,
                 (struct sockaddr*)&ctx->last_ds_addr, ctx->last_ds_addrlen)) {
@@ -345,9 +346,9 @@ int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events)
             return 1;
         }
     retry_send:
-        ret = sendto(ctx->inbound_sockfd, buf, ret, 0,
+        sent = sendto(ctx->inbound_sockfd, buf, recvd, 0,
             (struct sockaddr*)&ctx->last_inbound_addr, ctx->last_inbound_addrlen);
-        if (ret < 0) {
+        if (sent < 0) {
             if (errno == EINTR) {
                 goto retry_send;
             }
@@ -358,7 +359,7 @@ int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events)
             elog_e("Failed to send datagram to inbound");
             return 1;
         }
-        log_t("Sent datagram of size %zd to inbound", ret);
+        log_t("Sent datagram of size %zd to inbound", sent);
     }
     return 0;
 }
@@ -371,7 +372,7 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
     char buf[PROTO_MAX_DATAGRAM];
     struct sockaddr_storage saddr;
     socklen_t saddrlen;
-    ssize_t ret;
+    ssize_t recvd;
 
     if (events & EPOLLERR) {
         if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errorlen) != 0) {
@@ -384,8 +385,8 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
     if (events & EPOLLIN) {
     retry_recv:
         saddrlen = sizeof(saddr);
-        ret = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
-        if (ret < 0) {
+        recvd = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
+        if (recvd < 0) {
             if (errno == EINTR) {
                 goto retry_recv;
             }
@@ -395,7 +396,7 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
             elog_e("Failed to receive datagram on inbound socket");
             return -1;
         }
-        log_t("Received datagram of size %zd from inbound client", ret);
+        log_t("Received datagram of size %zd from inbound client", recvd);
 
         if (!net_saddr_match((struct sockaddr*)&saddr, saddrlen,
                 (struct sockaddr*)&ctx->last_inbound_addr, ctx->last_inbound_addrlen)) {
@@ -404,7 +405,7 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
             ctx->last_inbound_addrlen = saddrlen;
         }
 
-        if (send_data_as_dns(ctx, buf, ret) != 0) {
+        if (send_data_as_dns(ctx, buf, recvd) != 0) {
             return -1;
         }
     }
@@ -431,23 +432,24 @@ bool on_fragment(metadata_t* metadata, char* domain, void* userdata)
 {
     jank_client_ctx_t* ctx = userdata;
 
-    ssize_t ret;
+    ssize_t recvd;
+    ssize_t sent;
     char buf[DNS_MIN_BUFSIZE];
     size_t ridx;
 
     log_t("S%u - F#%u => '%s'", metadata->session_id, metadata->frag_idx, domain);
-    ret = dns_compose_query(domain, random_bool() ? QTYPE_A : QTYPE_AAAA,
+    recvd = dns_compose_query(domain, random_bool() ? QTYPE_A : QTYPE_AAAA,
         random_u16(), buf, sizeof(buf));
-    if (ret < 0) {
-        log_e("Failed to compose DNS query: %zd", ret);
+    if (recvd < 0) {
+        log_e("Failed to compose DNS query: %zd", recvd);
         return false;
     }
 
     ridx = (ctx->resolver_index++) % ctx->resolver_count;
 retry_send:
-    ret = sendto(ctx->dns_sockfd, buf, ret, 0,
+    sent = sendto(ctx->dns_sockfd, buf, recvd, 0,
         (struct sockaddr*)&ctx->resolver_addrs[ridx], ctx->resolver_addrlens[ridx]);
-    if (ret < 0) {
+    if (sent < 0) {
         if (errno == EINTR) {
             goto retry_send;
         }
@@ -458,7 +460,7 @@ retry_send:
         elog_e("Failed to send DNS query");
         return false;
     }
-    log_t("Sent DNS query of size %zd to %s", ret,
+    log_t("Sent DNS query of size %zd to %s", sent,
         net_saddr_to_str((struct sockaddr*)&ctx->resolver_addrs[ridx]));
 
     return true;
