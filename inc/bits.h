@@ -2,6 +2,10 @@
 
 #include <stdint.h>
 
+#if !__has_builtin(__builtin_ctzg)
+#error "Your compiler is too old and does not support __builtin_ctzg, use GCC 14+"
+#endif
+
 typedef uint64_t bitset64_t;
 
 #define U64_BIT_ZERO_INIT(var) \

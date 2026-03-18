@@ -9,7 +9,7 @@ SRCEXT := c
 DEPEXT := h
 OBJEXT := o
 
-CC := gcc-14
+CC ?= gcc
 
 CFLAGS := -std=c11 -Wall -D_POSIX_C_SOURCE=200809L
 CFLAGS_REL := -DNDEBUG -Werror -O3 -flto
