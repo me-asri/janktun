@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 
 #include <unistd.h>
 #include <signal.h>
@@ -38,6 +39,7 @@ static bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain
 static ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
 static ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
 static void asm_session_evict(jank_server_ctx_t* ctx, size_t index);
+static ssize_t asm_session_realloc_oldest(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
 
 static void session_hist_push(jank_server_ctx_t* ctx, uint32_t session_id, uint64_t timestamp);
 static void session_hist_pop(jank_server_ctx_t* ctx);
@@ -485,8 +487,12 @@ bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     if (asm_session_idx < 0) {
         asm_session_idx = asm_session_alloc(ctx, md.session_id, &asm_session);
         if (asm_session_idx < 0) {
-            log_w("No assembler available for S%u", md.session_id);
-            return true;
+            log_w("No assembler available for S%u, reallocating oldest session", md.session_id);
+            asm_session_idx = asm_session_realloc_oldest(ctx, md.session_id, &asm_session);
+            if (asm_session_idx < 0) {
+                log_e("Failed to reallocate session");
+                return true;
+            }
         }
     }
 
@@ -565,7 +571,31 @@ void asm_session_evict(jank_server_ctx_t* ctx, size_t index)
     U256_BIT_CLEAR(ctx->active_asm_sessions, index);
     session_hist_push(ctx, ctx->asm_sessions[index].session_id,
         timestamp_mono());
-    log_t("Evicted assembler #%zu", index);
+}
+
+ssize_t asm_session_realloc_oldest(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session)
+{
+    ssize_t index = 0;
+    uint64_t min_timestamp = UINT64_MAX;
+    ssize_t min_index = -1;
+
+    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
+    {
+        if (ctx->asm_sessions[index].timestamp < min_timestamp) {
+            min_timestamp = ctx->asm_sessions[index].timestamp;
+            min_index = index;
+        }
+    }
+    if (min_index > 0) {
+        asm_session_evict(ctx, min_index);
+        ctx->asm_sessions[min_index].session_id = session_id;
+        ctx->asm_sessions[min_index].timestamp = 0;
+        frag_assembler_init(&ctx->asm_sessions[min_index].assembler);
+        U256_BIT_SET(ctx->active_asm_sessions, min_index);
+
+        *session = &ctx->asm_sessions[min_index];
+    }
+    return min_index;
 }
 
 void session_hist_push(jank_server_ctx_t* ctx, uint32_t session_id, uint64_t timestamp)
