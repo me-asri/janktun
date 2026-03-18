@@ -35,6 +35,7 @@
 static int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events);
 static int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events);
 static bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len);
+static void handle_expiry(jank_server_ctx_t* ctx);
 
 static ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
 static ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session);
@@ -45,8 +46,6 @@ static void session_hist_push(jank_server_ctx_t* ctx, uint32_t session_id, uint6
 static void session_hist_pop(jank_server_ctx_t* ctx);
 static session_hist_entry_t* session_hist_peek(jank_server_ctx_t* ctx);
 static session_hist_entry_t* session_hist_find(jank_server_ctx_t* ctx, uint32_t session_id);
-
-static void handle_expiry(jank_server_ctx_t* ctx);
 
 int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
     const char* dns_listen_addr, const char* ds_addr,
@@ -536,6 +535,33 @@ bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     return true;
 }
 
+void handle_expiry(jank_server_ctx_t* ctx)
+{
+    ssize_t index;
+    uint64_t timestamp;
+
+    session_hist_entry_t* hist_entry = NULL;
+
+    timestamp = timestamp_mono();
+    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
+    {
+        if (timestamp - ctx->asm_sessions[index].timestamp >= ASM_SESSION_EXPIRY) {
+            U256_BIT_CLEAR(ctx->active_asm_sessions, index);
+            session_hist_push(ctx, ctx->asm_sessions[index].session_id, timestamp);
+            log_t("Evicted expired assembler S%u", ctx->asm_sessions[index].session_id);
+        }
+    }
+
+    while ((hist_entry = session_hist_peek(ctx))) {
+        if (timestamp - hist_entry->timestamp >= SESSION_HIST_EXPIRY) {
+            session_hist_pop(ctx);
+            log_t("Popped session %u from history", hist_entry->session_id);
+        } else {
+            break;
+        }
+    }
+}
+
 ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session)
 {
     ssize_t index;
@@ -643,31 +669,4 @@ session_hist_entry_t* session_hist_find(jank_server_ctx_t* ctx, uint32_t session
         }
     }
     return NULL;
-}
-
-void handle_expiry(jank_server_ctx_t* ctx)
-{
-    ssize_t index;
-    uint64_t timestamp;
-
-    session_hist_entry_t* hist_entry = NULL;
-
-    timestamp = timestamp_mono();
-    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
-    {
-        if (timestamp - ctx->asm_sessions[index].timestamp >= ASM_SESSION_EXPIRY) {
-            U256_BIT_CLEAR(ctx->active_asm_sessions, index);
-            session_hist_push(ctx, ctx->asm_sessions[index].session_id, timestamp);
-            log_t("Evicted expired assembler S%u", ctx->asm_sessions[index].session_id);
-        }
-    }
-
-    while ((hist_entry = session_hist_peek(ctx))) {
-        if (timestamp - hist_entry->timestamp >= SESSION_HIST_EXPIRY) {
-            session_hist_pop(ctx);
-            log_t("Evicted session %u from history", hist_entry->session_id);
-        } else {
-            break;
-        }
-    }
 }
