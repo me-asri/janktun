@@ -22,7 +22,7 @@
 #include "timestamp.h"
 #include "timer.h"
 
-#define EPOLL_MAX_EVENTS 8
+#define EPOLL_MAX_EVENTS 4
 #define UDP_BUFSIZE 65535
 
 #define DNS_SOCK_SNDBUF (1024 * 1024)
@@ -116,7 +116,7 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
         goto err_close_dns;
     }
     ev.data.fd = ctx->dns_sockfd;
-    ev.events = EPOLLIN | EPOLLET;
+    ev.events = EPOLLIN;
     if (epoll_ctl(ctx->epollfd, EPOLL_CTL_ADD, ctx->dns_sockfd, &ev) != 0) {
         elog_e("Failed to add DNS socket to epoll instance");
         goto err_close_dns;
@@ -137,7 +137,7 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
         goto err_close_dest;
     }
     ev.data.fd = ctx->dest_sockfd;
-    ev.events = EPOLLIN | EPOLLET;
+    ev.events = EPOLLIN;
     if (epoll_ctl(ctx->epollfd, EPOLL_CTL_ADD, ctx->dest_sockfd, &ev) != 0) {
         elog_e("Failed to add dest socket to epoll instance");
         goto err_close_dest;
@@ -224,7 +224,7 @@ int jank_server_run(jank_server_ctx_t* ctx)
         return -1;
     }
     events[0].data.fd = sigfd;
-    events[0].events = EPOLLIN | EPOLLET;
+    events[0].events = EPOLLIN;
     if (epoll_ctl(ctx->epollfd, EPOLL_CTL_ADD, sigfd, &events[0]) != 0) {
         elog_e("Failed to add signalfd to epoll instance");
         goto err_close_sigfd;
@@ -235,7 +235,7 @@ int jank_server_run(jank_server_ctx_t* ctx)
         goto err_close_sigfd;
     }
     events[0].data.fd = timerfd;
-    events[0].events = EPOLLIN | EPOLLET;
+    events[0].events = EPOLLIN;
     if (epoll_ctl(ctx->epollfd, EPOLL_CTL_ADD, timerfd, &events[0]) != 0) {
         elog_e("Failed to add timerfd to epoll instance");
         goto err_close_timer;
@@ -253,12 +253,12 @@ int jank_server_run(jank_server_ctx_t* ctx)
 
         for (i = 0; i < ret; i++) {
             if (events[i].data.fd == ctx->dns_sockfd) {
-                if (handle_dns_events(ctx, events[i].data.fd, events[i].events) != 0) {
+                if (handle_dns_events(ctx, events[i].data.fd, events[i].events) < 0) {
                     log_e("Failed to handle DNS socket events");
                     goto err_close_timer;
                 }
             } else if (events[i].data.fd == ctx->dest_sockfd) {
-                if (handle_dest_events(ctx, events[i].data.fd, events[i].events) != 0) {
+                if (handle_dest_events(ctx, events[i].data.fd, events[i].events) < 0) {
                     log_e("Failed to handle destination socket events");
                     goto err_close_timer;
                 }
@@ -341,65 +341,64 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
         }
     }
     if (events & EPOLLIN) {
-        for (;;) {
-            saddrlen = sizeof(saddr);
-            recvd = recvfrom(fd, query_buf, sizeof(query_buf), 0, (struct sockaddr*)&saddr, &saddrlen);
-            if (recvd < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    break;
-                }
-                elog_e("Failed to receive datagram on DNS socket");
-                return -1;
+    retry_recv:
+        saddrlen = sizeof(saddr);
+        recvd = recvfrom(fd, query_buf, sizeof(query_buf), 0, (struct sockaddr*)&saddr, &saddrlen);
+        if (recvd < 0) {
+            if (errno == EINTR) {
+                goto retry_recv;
             }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return 0;
+            }
+            elog_e("Failed to receive datagram on DNS socket");
+            return -1;
+        }
 
-            ret = dns_parse_query(query_buf, recvd, domain, sizeof(domain), &domain_len, NULL, NULL);
-            if (ret < 0) {
-                log_d("%s - Received invalid DNS query: %zd",
-                    net_saddr_to_str((struct sockaddr*)&saddr), ret);
-                continue;
-            }
-            log_t("%s - Received DNS query for domain: %s",
+        ret = dns_parse_query(query_buf, recvd, domain, sizeof(domain), &domain_len, NULL, NULL);
+        if (ret < 0) {
+            log_d("%s - Received invalid DNS query: %zd",
+                net_saddr_to_str((struct sockaddr*)&saddr), ret);
+            return 0;
+        }
+        log_t("%s - Received DNS query for domain: %s",
+            net_saddr_to_str((struct sockaddr*)&saddr), domain);
+
+        if (domain_len <= ctx->domain_len
+            || domain[domain_len - ctx->domain_len - 1] != '.'
+            || strcasecmp(domain + domain_len - ctx->domain_len, ctx->domain) != 0) {
+            log_d("%s - Refusing to answer DNS query for domain %s",
                 net_saddr_to_str((struct sockaddr*)&saddr), domain);
+            rcode = RCODE_REFUSED;
+        } else {
+            if (!handle_dns_query(ctx, domain, domain_len)) {
+                log_d("DNS query handler rejected query, not sending response");
+                return 0;
+            }
+            rcode = RCODE_NXDOMAIN;
+        }
 
-            if (domain_len <= ctx->domain_len
-                || domain[domain_len - ctx->domain_len - 1] != '.'
-                || strcasecmp(domain + domain_len - ctx->domain_len, ctx->domain) != 0) {
-                log_d("%s - Refusing to answer DNS query for domain %s",
-                    net_saddr_to_str((struct sockaddr*)&saddr), domain);
-                rcode = RCODE_REFUSED;
-            } else {
-                if (!handle_dns_query(ctx, domain, domain_len)) {
-                    log_d("DNS query handler rejected query, not sending response");
-                    continue;
-                }
-                rcode = RCODE_NXDOMAIN;
+        ret = dns_compose_reply_empty(query_buf, recvd, rcode, reply_buf, sizeof(reply_buf));
+        if (ret < 0) {
+            log_w("%s - Failed to compose DNS reply for domain %s: %zd",
+                net_saddr_to_str((struct sockaddr*)&saddr), domain, ret);
+            return 0;
+        }
+    retry_send:
+        ret = sendto(fd, reply_buf, ret, 0, (struct sockaddr*)&saddr, saddrlen);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                goto retry_send;
             }
-
-            ret = dns_compose_reply_empty(query_buf, recvd, rcode, reply_buf, sizeof(reply_buf));
-            if (ret < 0) {
-                log_w("%s - Failed to compose DNS reply for domain %s: %zd",
-                    net_saddr_to_str((struct sockaddr*)&saddr), domain, ret);
-                continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                log_d("%s - DNS send buffer full, dropping reply",
+                    net_saddr_to_str((struct sockaddr*)&saddr));
+                return 0;
             }
-        retry_send:
-            ret = sendto(fd, reply_buf, ret, 0, (struct sockaddr*)&saddr, saddrlen);
-            if (ret < 0) {
-                if (errno == EINTR) {
-                    goto retry_send;
-                }
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    log_d("%s - DNS send buffer full, failed to send reply",
-                        net_saddr_to_str((struct sockaddr*)&saddr));
-                }
-                elog_e("%s - Failed to send DNS reply", net_saddr_to_str((struct sockaddr*)&saddr));
-                continue;
-            }
+            elog_e("%s - Failed to send DNS reply", net_saddr_to_str((struct sockaddr*)&saddr));
+            return 1;
         }
     }
-
     return 0;
 }
 
@@ -422,36 +421,35 @@ int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events)
         }
     }
     if (events & EPOLLIN) {
-        for (;;) {
-            ret = recv(fd, buf, sizeof(buf), 0);
-            if (ret < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    break;
-                }
-                elog_e("Failed to receive datagram on destination socket");
-                return -1;
+    retry_recv:
+        ret = recv(fd, buf, sizeof(buf), 0);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                goto retry_recv;
             }
-            log_t("Received datagram of size %zd from destination", ret);
-
-        retry_send:
-            ret = send(ctx->ds_sockfd, buf, ret, 0);
-            if (ret < 0) {
-                if (errno == EINTR) {
-                    goto retry_send;
-                }
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    log_d("Downstream socket send buffer full, dropping datagram");
-                }
-                log_e("Failed to send datagram to downstream");
-                continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return 0;
             }
-            log_t("Sent datagram of size %zd to downstream", ret);
+            elog_e("Failed to receive datagram on destination socket");
+            return -1;
         }
-    }
+        log_t("Received datagram of size %zd from destination", ret);
 
+    retry_send:
+        ret = send(ctx->ds_sockfd, buf, ret, 0);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                goto retry_send;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                log_d("Downstream socket send buffer full, dropping datagram");
+                return 0;
+            }
+            elog_e("Failed to send datagram to downstream");
+            return 1;
+        }
+        log_t("Sent datagram of size %zd to downstream", ret);
+    }
     return 0;
 }
 

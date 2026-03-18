@@ -20,7 +20,7 @@
 #include "random.h"
 
 #define DNS_SOCK_SNDBUF (1024 * 1024)
-#define EPOLL_MAX_EVENTS 8
+#define EPOLL_MAX_EVENTS 4
 #define UDP_BUFSIZE 65535
 
 static int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events);
@@ -152,7 +152,7 @@ int jank_client_init(jank_client_ctx_t* ctx,
         };
     }
     ev.data.fd = ctx->ds_sockfd;
-    ev.events = EPOLLIN | EPOLLET;
+    ev.events = EPOLLIN;
     if (epoll_ctl(ctx->epollfd, EPOLL_CTL_ADD, ctx->ds_sockfd, &ev) != 0) {
         elog_e("Failed to add downstream socket to epoll instance");
         goto err_close_ds;
@@ -183,7 +183,7 @@ int jank_client_init(jank_client_ctx_t* ctx,
         goto err_close_inbound;
     }
     ev.data.fd = ctx->inbound_sockfd;
-    ev.events = EPOLLIN | EPOLLET;
+    ev.events = EPOLLIN;
     if (epoll_ctl(ctx->epollfd, EPOLL_CTL_ADD, ctx->inbound_sockfd, &ev) != 0) {
         elog_e("Failed to add inbound socket to epoll instance");
         goto err_close_inbound;
@@ -228,7 +228,7 @@ int jank_client_run(jank_client_ctx_t* ctx)
         return -1;
     }
     events[0].data.fd = sigfd;
-    events[0].events = EPOLLIN | EPOLLET;
+    events[0].events = EPOLLIN;
     if (epoll_ctl(ctx->epollfd, EPOLL_CTL_ADD, sigfd, &events[0]) != 0) {
         elog_e("Failed to add signalfd to epoll instance");
         goto err_close_sigfd;
@@ -246,12 +246,12 @@ int jank_client_run(jank_client_ctx_t* ctx)
 
         for (i = 0; i < ret; i++) {
             if (events[i].data.fd == ctx->ds_sockfd) {
-                if (handle_ds_events(ctx, events[i].data.fd, events[i].events) != 0) {
+                if (handle_ds_events(ctx, events[i].data.fd, events[i].events) < 0) {
                     log_e("Failed to handle downstream events");
                     goto err_close_sigfd;
                 }
             } else if (events[i].data.fd == ctx->inbound_sockfd) {
-                if (handle_inbound_events(ctx, events[i].data.fd, events[i].events) != 0) {
+                if (handle_inbound_events(ctx, events[i].data.fd, events[i].events) < 0) {
                     log_e("Failed to handle inbound events");
                     goto err_close_sigfd;
                 }
@@ -318,49 +318,48 @@ int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events)
         }
     }
     if (events & EPOLLIN) {
-        for (;;) {
-            saddrlen = sizeof(saddr);
-            ret = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
-            if (ret < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    break;
-                }
-                elog_e("Failed to receive datagram on downstream socket");
-                return -1;
+    retry_recv:
+        saddrlen = sizeof(saddr);
+        ret = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                goto retry_recv;
             }
-            log_t("Received datagram of size %zd from upstream", ret);
-
-            if (!net_saddr_match((struct sockaddr*)&saddr, saddrlen,
-                    (struct sockaddr*)&ctx->last_ds_addr, ctx->last_ds_addrlen)) {
-                log_i("Upstream connected from %s", net_saddr_to_str((struct sockaddr*)&saddr));
-                memcpy(&ctx->last_ds_addr, &saddr, saddrlen);
-                ctx->last_ds_addrlen = saddrlen;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return 0;
             }
-
-            if (ctx->last_inbound_addrlen == 0) {
-                log_w("Inbound not connected, dropping datagram from upstream");
-                continue;
-            }
-        retry_send:
-            ret = sendto(ctx->inbound_sockfd, buf, ret, 0,
-                (struct sockaddr*)&ctx->last_inbound_addr, ctx->last_inbound_addrlen);
-            if (ret < 0) {
-                if (errno == EINTR) {
-                    goto retry_send;
-                }
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    log_d("Inbound socket send buffer full, dropping datagram");
-                }
-                log_e("Failed to send datagram to inbound");
-                continue;
-            }
-            log_t("Sent datagram of size %zd to inbound", ret);
+            elog_e("Failed to receive datagram on downstream socket");
+            return -1;
         }
-    }
+        log_t("Received datagram of size %zd from upstream", ret);
 
+        if (!net_saddr_match((struct sockaddr*)&saddr, saddrlen,
+                (struct sockaddr*)&ctx->last_ds_addr, ctx->last_ds_addrlen)) {
+            log_i("Upstream connected from %s", net_saddr_to_str((struct sockaddr*)&saddr));
+            memcpy(&ctx->last_ds_addr, &saddr, saddrlen);
+            ctx->last_ds_addrlen = saddrlen;
+        }
+
+        if (ctx->last_inbound_addrlen == 0) {
+            log_w("Inbound not connected, dropping datagram from upstream");
+            return 1;
+        }
+    retry_send:
+        ret = sendto(ctx->inbound_sockfd, buf, ret, 0,
+            (struct sockaddr*)&ctx->last_inbound_addr, ctx->last_inbound_addrlen);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                goto retry_send;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                log_d("Inbound socket send buffer full, dropping datagram");
+                return 0;
+            }
+            elog_e("Failed to send datagram to inbound");
+            return 1;
+        }
+        log_t("Sent datagram of size %zd to inbound", ret);
+    }
     return 0;
 }
 
@@ -383,31 +382,30 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
         }
     }
     if (events & EPOLLIN) {
-        for (;;) {
-            saddrlen = sizeof(saddr);
-            ret = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
-            if (ret < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    break;
-                }
-                elog_e("Failed to receive datagram on inbound socket");
-                return -1;
+    retry_recv:
+        saddrlen = sizeof(saddr);
+        ret = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                goto retry_recv;
             }
-            log_t("Received datagram of size %zd from inbound client", ret);
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return 0;
+            }
+            elog_e("Failed to receive datagram on inbound socket");
+            return -1;
+        }
+        log_t("Received datagram of size %zd from inbound client", ret);
 
-            if (!net_saddr_match((struct sockaddr*)&saddr, saddrlen,
-                    (struct sockaddr*)&ctx->last_inbound_addr, ctx->last_inbound_addrlen)) {
-                log_i("Inbound connected from %s", net_saddr_to_str((struct sockaddr*)&saddr));
-                memcpy(&ctx->last_inbound_addr, &saddr, saddrlen);
-                ctx->last_inbound_addrlen = saddrlen;
-            }
+        if (!net_saddr_match((struct sockaddr*)&saddr, saddrlen,
+                (struct sockaddr*)&ctx->last_inbound_addr, ctx->last_inbound_addrlen)) {
+            log_i("Inbound connected from %s", net_saddr_to_str((struct sockaddr*)&saddr));
+            memcpy(&ctx->last_inbound_addr, &saddr, saddrlen);
+            ctx->last_inbound_addrlen = saddrlen;
+        }
 
-            if (send_data_as_dns(ctx, buf, ret) != 0) {
-                log_e("Failed to send DNS query");
-            }
+        if (send_data_as_dns(ctx, buf, ret) != 0) {
+            return -1;
         }
     }
 

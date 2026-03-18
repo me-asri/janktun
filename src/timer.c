@@ -46,26 +46,25 @@ int timerfd_get_expire(int fd, uint64_t* expirations)
     uint64_t buf;
     ssize_t nread;
 
-    for (;;) {
-        nread = read(fd, &buf, sizeof(buf));
-        if (nread < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;
-            } else if (errno == EINTR) {
-                continue;
-            } else {
-                elog_e("Failed to read timerfd");
-                return -1;
-            }
-        }
-        if (nread != sizeof(buf)) {
-            log_e("Invalid read size from timerfd: %zd", nread);
+retry_read:
+    nread = read(fd, &buf, sizeof(buf));
+    if (nread < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return 0;
+        } else if (errno == EINTR) {
+            goto retry_read;
+        } else {
+            elog_e("Failed to read timerfd");
             return -1;
         }
+    }
+    if (nread != sizeof(buf)) {
+        log_e("Invalid read size from timerfd: %zd", nread);
+        return -1;
+    }
 
-        if (expirations != NULL) {
-            *expirations = buf;
-        }
+    if (expirations != NULL) {
+        *expirations = buf;
     }
 
     return 0;
