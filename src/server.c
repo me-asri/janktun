@@ -504,7 +504,6 @@ bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     asm_session->timestamp = timestamp_mono();
     log_t("Added fragment #%u of size %zd for S%u", md.frag_idx, payload_len, md.session_id);
 
-    /* TODO: duplicate session detection */
     proto_ret = frag_assembler_assemble(&asm_session->assembler, &assembled, &assembled_len);
     if (proto_ret == PROTOERR_SUCCESS) {
         log_t("Assembled payload of length %zu for S%u", assembled_len, asm_session->session_id);
