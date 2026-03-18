@@ -45,10 +45,10 @@ typedef enum {
 
 typedef struct {
     bitset64_t received_frags;
-    size_t max_frag_count;
-    size_t max_frag_size;
-    size_t last_frag_size;
-    char buf[PROTO_FRAG_MAX * PROTO_FRAG_LEN_MAX];
+    uint8_t max_frag_count;
+    uint8_t max_frag_size;
+    uint8_t last_frag_size;
+    char buf[PROTO_MAX_DATAGRAM];
 } frag_assembler_t;
 
 /* Callback for `protocol_encode_domain` */
