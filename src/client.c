@@ -375,10 +375,10 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
     int error;
     socklen_t errorlen;
 
-    char buf[PROTO_MAX_DATAGRAM];
     struct sockaddr_storage saddr;
-    socklen_t saddrlen;
-    ssize_t recvd;
+    int nrecvd;
+
+    int i;
 
     if (events & EPOLLERR) {
         error = 0;
@@ -392,30 +392,45 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
         }
     }
     if (events & EPOLLIN) {
+        for (i = 0; i < CLIENT_UDP_VLEN; i++) {
+            ctx->udp_msgs[i].msg_hdr.msg_iov[0].iov_len = CLIENT_UDP_BUFSIZE;
+            ctx->udp_msgs[i].msg_hdr.msg_name = NULL;
+            ctx->udp_msgs[i].msg_len = 0;
+        }
+        ctx->udp_msgs[0].msg_hdr.msg_name = &saddr;
+        ctx->udp_msgs[0].msg_hdr.msg_namelen = sizeof(saddr);
     retry_recv:
-        saddrlen = sizeof(saddr);
-        recvd = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&saddr, &saddrlen);
-        if (recvd < 0) {
+        nrecvd = recvmmsg(fd, ctx->udp_msgs, CLIENT_UDP_VLEN, 0, NULL);
+        if (nrecvd < 0) {
             if (errno == EINTR) {
                 goto retry_recv;
             }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return 0;
             }
-            elog_e("Failed to receive datagram on inbound socket");
+            elog_e("Failed to receive datagrams on inbound socket");
             return -1;
         }
-        log_t("Received datagram of size %zd from inbound client", recvd);
+        log_t("Received %d datagrams from inbound client", nrecvd);
 
-        if (!net_saddr_match((struct sockaddr*)&saddr, saddrlen,
+        if (!net_saddr_match(
+                (struct sockaddr*)ctx->udp_msgs[0].msg_hdr.msg_name,
+                ctx->udp_msgs[0].msg_hdr.msg_namelen,
                 (struct sockaddr*)&ctx->last_inbound_addr, ctx->last_inbound_addrlen)) {
             log_i("Inbound connected from %s", net_saddr_to_str((struct sockaddr*)&saddr));
-            memcpy(&ctx->last_inbound_addr, &saddr, saddrlen);
-            ctx->last_inbound_addrlen = saddrlen;
+            memcpy(&ctx->last_inbound_addr,
+                ctx->udp_msgs[0].msg_hdr.msg_name, ctx->udp_msgs[0].msg_hdr.msg_namelen);
+            ctx->last_inbound_addrlen = ctx->udp_msgs[0].msg_hdr.msg_namelen;
         }
 
-        if (send_data_as_dns(ctx, buf, recvd) != 0) {
-            return -1;
+        for (i = 0; i < nrecvd; i++) {
+            if (send_data_as_dns(
+                    ctx,
+                    ctx->udp_msgs[i].msg_hdr.msg_iov[0].iov_base,
+                    ctx->udp_msgs[i].msg_len)
+                != 0) {
+                return -1;
+            }
         }
     }
 
