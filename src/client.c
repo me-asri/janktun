@@ -21,7 +21,7 @@
 
 #define DNS_SOCK_SNDBUF (1024 * 1024)
 #define EPOLL_MAX_EVENTS 4
-#define UDP_BUFSIZE 65535
+#define UDP_BUFSIZE 9216
 
 static int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events);
 static int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events);

@@ -23,7 +23,7 @@
 #include "timer.h"
 
 #define EPOLL_MAX_EVENTS 4
-#define UDP_BUFSIZE 65535
+#define UDP_BUFSIZE 9216
 
 #define DNS_SOCK_SNDBUF (1024 * 1024)
 #define DNS_SOCK_RCVBUF (1024 * 1024)
