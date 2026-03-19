@@ -630,10 +630,10 @@ void session_hist_push(jank_server_ctx_t* ctx, uint32_t session_id, uint64_t tim
     ctx->session_hist.entries[ctx->session_hist.tail].session_id = session_id;
     ctx->session_hist.entries[ctx->session_hist.tail].timestamp = timestamp;
 
-    ctx->session_hist.tail = (ctx->session_hist.tail + 1) % MAX_SESSION_HIST;
+    ctx->session_hist.tail = (ctx->session_hist.tail + 1) % SERVER_MAX_SESSION_HIST;
 
-    if (ctx->session_hist.count == MAX_SESSION_HIST) {
-        ctx->session_hist.head = (ctx->session_hist.head + 1) % MAX_SESSION_HIST;
+    if (ctx->session_hist.count == SERVER_MAX_SESSION_HIST) {
+        ctx->session_hist.head = (ctx->session_hist.head + 1) % SERVER_MAX_SESSION_HIST;
     } else {
         ctx->session_hist.count++;
     }
@@ -645,7 +645,7 @@ void session_hist_pop(jank_server_ctx_t* ctx)
         return;
     }
 
-    ctx->session_hist.head = (ctx->session_hist.head + 1) % MAX_SESSION_HIST;
+    ctx->session_hist.head = (ctx->session_hist.head + 1) % SERVER_MAX_SESSION_HIST;
     ctx->session_hist.count--;
 }
 
@@ -664,7 +664,7 @@ session_hist_entry_t* session_hist_find(jank_server_ctx_t* ctx, uint32_t session
     size_t i;
 
     for (i = 0; i < ctx->session_hist.count; i++) {
-        index = (ctx->session_hist.head + i) % MAX_SESSION_HIST;
+        index = (ctx->session_hist.head + i) % SERVER_MAX_SESSION_HIST;
         if (ctx->session_hist.entries[index].session_id == session_id) {
             return &ctx->session_hist.entries[index];
         }

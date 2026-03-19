@@ -4,8 +4,8 @@
 #include "dns.h"
 #include "protocol.h"
 
-#define MAX_ASM_SESSIONS 512
-#define MAX_SESSION_HIST 1024
+#define SERVER_MAX_ASM_SESSIONS 512
+#define SERVER_MAX_SESSION_HIST 1024
 
 typedef struct {
     uint32_t session_id;
@@ -19,7 +19,7 @@ typedef struct {
 } session_hist_entry_t;
 
 typedef struct {
-    session_hist_entry_t entries[MAX_SESSION_HIST];
+    session_hist_entry_t entries[SERVER_MAX_SESSION_HIST];
 
     size_t head;
     size_t tail;
@@ -37,7 +37,7 @@ typedef struct {
     int epollfd;
 
     bitset512_t active_asm_sessions;
-    asm_session_t asm_sessions[MAX_ASM_SESSIONS];
+    asm_session_t asm_sessions[SERVER_MAX_ASM_SESSIONS];
 
     session_hist_t session_hist;
 } jank_server_ctx_t;
