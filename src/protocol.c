@@ -1,5 +1,3 @@
-#define _DEFAULT_SOURCE
-
 #include "protocol.h"
 
 #include <stdlib.h>
