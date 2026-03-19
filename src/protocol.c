@@ -236,7 +236,7 @@ ssize_t base32_delim_encode(const char* buf, size_t buflen, char* out,
 
 void frag_assembler_init(frag_assembler_t* assembler)
 {
-    U64_BIT_ZERO_INIT(assembler->received_frags);
+    BITSET64_ZERO_INIT(assembler->received_frags);
     assembler->max_frag_size = 0;
     assembler->max_frag_count = 0;
     assembler->last_frag_size = 0;
@@ -253,7 +253,7 @@ protoerr_t frag_assembler_add(frag_assembler_t* assembler,
     if (buflen == 0) {
         return PROTOERR_INVALID;
     }
-    if (U64_BIT_TEST(assembler->received_frags, frag_idx)) {
+    if (BITSET64_TEST_BIT(assembler->received_frags, frag_idx)) {
         return PROTOERR_DUP;
     }
 
@@ -296,7 +296,7 @@ protoerr_t frag_assembler_add(frag_assembler_t* assembler,
         dest = assembler->buf + frag_idx * assembler->max_frag_size;
         memcpy(dest, buf, buflen);
     }
-    U64_BIT_SET(assembler->received_frags, frag_idx);
+    BITSET64_SET_BIT(assembler->received_frags, frag_idx);
 
     return PROTOERR_SUCCESS;
 }
@@ -305,7 +305,7 @@ protoerr_t frag_assembler_assemble(frag_assembler_t* assembler, char** buf, size
 {
     if (assembler->max_frag_count == 0
         || assembler->last_frag_size == 0
-        || !U64_BIT_TEST_SEQ(assembler->received_frags, 0, assembler->max_frag_count)) {
+        || !BITSET64_TEST_SEQ(assembler->received_frags, 0, assembler->max_frag_count)) {
         return PROTOERR_INCOMPLETE;
     }
 

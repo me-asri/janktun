@@ -29,8 +29,8 @@
 #define DNS_SOCK_RCVBUF (1024 * 1024)
 
 #define EXPIRY_TIMER_INTERVAL 1000
-#define ASM_SESSION_EXPIRY 5000
-#define SESSION_HIST_EXPIRY 10000
+#define ASM_SESSION_EXPIRY 10000
+#define SESSION_HIST_EXPIRY 15000
 
 static int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events);
 static int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events);
@@ -68,7 +68,7 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
     }
     strcpy(ctx->domain, domain);
 
-    U256_BIT_ZERO_INIT(ctx->active_asm_sessions);
+    BITSET512_ZERO_INIT(ctx->active_asm_sessions);
     ctx->session_hist.head = 0;
     ctx->session_hist.tail = 0;
     ctx->session_hist.count = 0;
@@ -544,10 +544,10 @@ void handle_expiry(jank_server_ctx_t* ctx)
     session_hist_entry_t* hist_entry = NULL;
 
     timestamp = timestamp_mono();
-    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
+    BITSET512_FOR_EACH_SET(ctx->active_asm_sessions, index)
     {
         if (timestamp - ctx->asm_sessions[index].timestamp >= ASM_SESSION_EXPIRY) {
-            U256_BIT_CLEAR(ctx->active_asm_sessions, index);
+            BITSET512_CLEAR_BIT(ctx->active_asm_sessions, index);
             session_hist_push(ctx, ctx->asm_sessions[index].session_id, timestamp);
             log_t("Evicted expired assembler S%u", ctx->asm_sessions[index].session_id);
         }
@@ -566,7 +566,7 @@ void handle_expiry(jank_server_ctx_t* ctx)
 ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session)
 {
     ssize_t index;
-    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
+    BITSET512_FOR_EACH_SET(ctx->active_asm_sessions, index)
     {
         if (ctx->asm_sessions[index].session_id == session_id) {
             *session = &ctx->asm_sessions[index];
@@ -579,7 +579,7 @@ ssize_t asm_session_find(jank_server_ctx_t* ctx, uint32_t session_id, asm_sessio
 ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_session_t** session)
 {
     ssize_t index;
-    index = U256_BIT_FIRST_UNSET(ctx->active_asm_sessions);
+    index = BITSET512_FIRST_UNSET(ctx->active_asm_sessions);
     if (index < 0) {
         return -1;
     }
@@ -589,13 +589,13 @@ ssize_t asm_session_alloc(jank_server_ctx_t* ctx, uint32_t session_id, asm_sessi
     frag_assembler_init(&ctx->asm_sessions[index].assembler);
     *session = &ctx->asm_sessions[index];
 
-    U256_BIT_SET(ctx->active_asm_sessions, index);
+    BITSET512_SET_BIT(ctx->active_asm_sessions, index);
     return index;
 }
 
 void asm_session_evict(jank_server_ctx_t* ctx, size_t index)
 {
-    U256_BIT_CLEAR(ctx->active_asm_sessions, index);
+    BITSET512_CLEAR_BIT(ctx->active_asm_sessions, index);
     session_hist_push(ctx, ctx->asm_sessions[index].session_id,
         timestamp_mono());
 }
@@ -606,7 +606,7 @@ ssize_t asm_session_realloc_oldest(jank_server_ctx_t* ctx, uint32_t session_id, 
     uint64_t min_timestamp = UINT64_MAX;
     ssize_t min_index = -1;
 
-    U256_FOR_EACH_BIT_SET(ctx->active_asm_sessions, index)
+    BITSET512_FOR_EACH_SET(ctx->active_asm_sessions, index)
     {
         if (ctx->asm_sessions[index].timestamp < min_timestamp) {
             min_timestamp = ctx->asm_sessions[index].timestamp;
@@ -618,7 +618,7 @@ ssize_t asm_session_realloc_oldest(jank_server_ctx_t* ctx, uint32_t session_id, 
         ctx->asm_sessions[min_index].session_id = session_id;
         ctx->asm_sessions[min_index].timestamp = 0;
         frag_assembler_init(&ctx->asm_sessions[min_index].assembler);
-        U256_BIT_SET(ctx->active_asm_sessions, min_index);
+        BITSET512_SET_BIT(ctx->active_asm_sessions, min_index);
 
         *session = &ctx->asm_sessions[min_index];
     }
