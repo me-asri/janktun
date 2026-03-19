@@ -6,6 +6,8 @@
 #include "dns.h"
 
 #define CLIENT_MAX_RESOLVERS 16
+#define CLIENT_UDP_BUFSIZE 9216
+#define CLIENT_UDP_VLEN 16
 
 typedef struct {
     char domain[DNS_MAX_DOMAIN_LEN];
@@ -23,11 +25,12 @@ typedef struct {
     size_t resolver_count;
     size_t resolver_index;
 
-    struct sockaddr_storage last_ds_addr;
-    socklen_t last_ds_addrlen;
-
     struct sockaddr_storage last_inbound_addr;
     socklen_t last_inbound_addrlen;
+
+    struct iovec udp_iovs[CLIENT_UDP_VLEN];
+    struct mmsghdr udp_msgs[CLIENT_UDP_VLEN];
+    char udp_bufs[CLIENT_UDP_VLEN][CLIENT_UDP_BUFSIZE];
 } jank_client_ctx_t;
 
 /* Initialize janktun client instance */

@@ -307,7 +307,7 @@ int jank_server_destroy(jank_server_ctx_t* ctx)
 int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
 {
     int error;
-    socklen_t errorlen = sizeof(error);
+    socklen_t errorlen;
 
     char query_buf[DNS_MIN_BUFSIZE];
     char reply_buf[DNS_MIN_BUFSIZE];
@@ -324,6 +324,9 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
     rcode_t rcode;
 
     if (events & EPOLLERR) {
+        error = 0;
+        errorlen = sizeof(error);
+
         if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errorlen) != 0) {
             elog_w("Failed to read error on DNS socket");
         } else {
