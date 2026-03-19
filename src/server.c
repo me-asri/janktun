@@ -509,7 +509,7 @@ bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
         return false;
     }
     if (proto_ret != PROTOERR_SUCCESS) {
-        log_e("Failed to add fragment #%u to S%u: ", md.frag_idx, md.session_id, proto_ret);
+        log_e("Failed to add fragment #%u to S%u: %d", md.frag_idx, md.session_id, proto_ret);
         asm_session_evict(ctx, asm_session_idx);
         return false;
     }
