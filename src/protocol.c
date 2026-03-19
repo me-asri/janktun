@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <threads.h>
 
 #include <arpa/inet.h>
 
@@ -16,6 +17,8 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 static const char BASE32_ALPHABET[] = "abcdefghijklmnopqrstuvwxyz234567";
+
+static thread_local uint32_t base_session_id = 0;
 
 static ssize_t base32_decode(const char* input, char* buf, size_t buflen);
 static ssize_t base32_delim_encode(const char* buf, size_t buflen, char* out,
@@ -55,8 +58,12 @@ protoerr_t protocol_encode_domain(
     const char* buf, size_t buflen,
     proto_domain_cb_t callback, void* userdata)
 {
+    if (base_session_id == 0) {
+        base_session_id = random_u32();
+    }
+
     metadata_t md = {
-        .session_id = random_u32() & 0x01FFFFFF,
+        .session_id = (base_session_id++) & 0x01FFFFFF,
     };
 
     size_t remaining;
