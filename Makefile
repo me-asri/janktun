@@ -11,7 +11,7 @@ OBJEXT := o
 
 CC ?= gcc
 
-CFLAGS := -std=c11 -Wall -D_POSIX_C_SOURCE=200809L
+CFLAGS := -std=c11 -Wall -D_GNU_SOURCE
 CFLAGS_REL := -DNDEBUG -Werror -O3 -flto
 CFLAGS_DBG := -DDEBUG -Og -g
 

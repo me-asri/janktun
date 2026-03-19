@@ -4,8 +4,13 @@
 #include "dns.h"
 #include "protocol.h"
 
+#include <sys/socket.h>
+
 #define SERVER_MAX_ASM_SESSIONS 512
 #define SERVER_MAX_SESSION_HIST 1024
+
+#define SERVER_UDP_BUFSIZE 9216
+#define SERVER_UDP_VLEN 32
 
 typedef struct {
     uint32_t session_id;
@@ -40,6 +45,10 @@ typedef struct {
     asm_session_t asm_sessions[SERVER_MAX_ASM_SESSIONS];
 
     session_hist_t session_hist;
+
+    struct iovec udp_iovs[SERVER_UDP_VLEN];
+    struct mmsghdr udp_msgs[SERVER_UDP_VLEN];
+    char udp_bufs[SERVER_UDP_VLEN][SERVER_UDP_BUFSIZE];
 } jank_server_ctx_t;
 
 /* Initialize janktun server context */

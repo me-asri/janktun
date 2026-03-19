@@ -23,10 +23,6 @@
 #include "timer.h"
 
 #define EPOLL_MAX_EVENTS 4
-#define UDP_BUFSIZE 9216
-
-#define DNS_SOCK_SNDBUF (1024 * 1024)
-#define DNS_SOCK_RCVBUF (1024 * 1024)
 
 #define EXPIRY_TIMER_INTERVAL 1000
 #define ASM_SESSION_EXPIRY 10000
@@ -54,8 +50,9 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
     struct sockaddr_storage saddr;
     socklen_t saddrlen;
     int optval;
-    socklen_t optlen;
     struct epoll_event ev;
+
+    size_t i;
 
     ctx->domain_len = strlen(domain);
     if (ctx->domain_len > DNS_MAX_DOMAIN_LEN) {
@@ -72,6 +69,14 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
     ctx->session_hist.head = 0;
     ctx->session_hist.tail = 0;
     ctx->session_hist.count = 0;
+
+    memset(ctx->udp_msgs, 0, sizeof(ctx->udp_msgs));
+    for (i = 0; i < SERVER_UDP_VLEN; i++) {
+        ctx->udp_iovs[i].iov_base = ctx->udp_bufs[i];
+        ctx->udp_iovs[i].iov_len = SERVER_UDP_BUFSIZE;
+        ctx->udp_msgs[i].msg_hdr.msg_iov = &ctx->udp_iovs[i];
+        ctx->udp_msgs[i].msg_hdr.msg_iovlen = 1;
+    }
 
     ctx->epollfd = epoll_create1(0);
     if (ctx->epollfd < 0) {
@@ -94,22 +99,6 @@ int jank_server_init(jank_server_ctx_t* ctx, const char* domain,
         if (setsockopt(ctx->dns_sockfd, SOL_IPV6, IPV6_V6ONLY, &optval, sizeof(optval)) != 0) {
             elog_w("Failed to disable V6 only on DNS socket");
         }
-    }
-    optval = DNS_SOCK_SNDBUF;
-    if (setsockopt(ctx->dns_sockfd, SOL_SOCKET, SO_SNDBUF, &optval, sizeof(optval)) != 0) {
-        elog_w("Failed to increase send buffer for DNS socket");
-    }
-    optlen = sizeof(optval);
-    if (getsockopt(ctx->dns_sockfd, SOL_SOCKET, SO_SNDBUF, &optval, &optlen) == 0) {
-        log_d("DNS socket send buffer size: %d", optval);
-    }
-    optval = DNS_SOCK_RCVBUF;
-    if (setsockopt(ctx->dns_sockfd, SOL_SOCKET, SO_RCVBUF, &optval, sizeof(optval)) != 0) {
-        elog_w("Failed to increase receive buffer for DNS socket");
-    }
-    optlen = sizeof(optval);
-    if (getsockopt(ctx->dns_sockfd, SOL_SOCKET, SO_SNDBUF, &optval, &optlen) == 0) {
-        log_d("DNS socket send receive buffer size: %d", optval);
     }
     if (bind(ctx->dns_sockfd, (struct sockaddr*)&saddr, saddrlen) != 0) {
         elog_e("Failed to bind DNS socket");
@@ -406,14 +395,19 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
 
 int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events)
 {
-    int error = 0;
-    socklen_t errorlen = sizeof(error);
+    int error;
+    socklen_t errorlen;
 
-    char buf[UDP_BUFSIZE];
-    ssize_t recvd;
-    ssize_t sent;
+    int nrecvd;
+    int nsent;
+    int total_sent;
+
+    int i;
 
     if (events & EPOLLERR) {
+        error = 0;
+        errorlen = sizeof(error);
+
         if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errorlen) != 0) {
             elog_w("Failed to read error on destination socket");
         } else if (error == ECONNREFUSED) {
@@ -424,34 +418,46 @@ int handle_dest_events(jank_server_ctx_t* ctx, int fd, int events)
         }
     }
     if (events & EPOLLIN) {
+        for (i = 0; i < SERVER_UDP_VLEN; i++) {
+            ctx->udp_msgs[i].msg_hdr.msg_iov[0].iov_len = SERVER_UDP_BUFSIZE;
+        }
     retry_recv:
-        recvd = recv(fd, buf, sizeof(buf), 0);
-        if (recvd < 0) {
+        nrecvd = recvmmsg(fd, ctx->udp_msgs, SERVER_UDP_VLEN, 0, NULL);
+        if (nrecvd < 0) {
             if (errno == EINTR) {
                 goto retry_recv;
             }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return 0;
             }
-            elog_e("Failed to receive datagram on destination socket");
+            elog_e("Failed to receive datagrams on destination socket");
             return -1;
         }
-        log_t("Received datagram of size %zd from destination", recvd);
-
-    retry_send:
-        sent = send(ctx->ds_sockfd, buf, recvd, 0);
-        if (sent < 0) {
-            if (errno == EINTR) {
-                goto retry_send;
-            }
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                log_d("Downstream socket send buffer full, dropping datagram");
-                return 0;
-            }
-            elog_e("Failed to send datagram to downstream");
-            return 1;
+        for (i = 0; i < nrecvd; i++) {
+            ctx->udp_msgs[i].msg_hdr.msg_iov[0].iov_len = ctx->udp_msgs[i].msg_len;
+            log_t("Received datagrams #%d of size %u from destination",
+                i, ctx->udp_msgs[i].msg_len);
         }
-        log_t("Sent datagram of size %zd to downstream", sent);
+
+        total_sent = 0;
+        while (total_sent < nrecvd) {
+            nsent = sendmmsg(ctx->ds_sockfd, ctx->udp_msgs + total_sent,
+                nrecvd - total_sent, 0);
+            if (nsent < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    log_d("Downstream socket send buffer full, dropping %d datagrams",
+                        nrecvd - total_sent);
+                    break;
+                }
+                elog_e("Failed to send datagrams to downstream");
+                return 1;
+            }
+            log_t("Sent %d/%d datagrams to downstream", nsent, nrecvd);
+            total_sent += nsent;
+        }
     }
     return 0;
 }
