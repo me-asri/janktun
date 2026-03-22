@@ -196,6 +196,7 @@ ssize_t decode_domain(const char* encoded_name, char* domain_buf,
     size_t total_written = 0;
     uint8_t label_len;
 
+    char c;
     uint8_t i;
 
     while (*enc_ptr != 0) {
@@ -221,7 +222,13 @@ ssize_t decode_domain(const char* encoded_name, char* domain_buf,
 
         /* Copy the label characters */
         for (i = 0; i < label_len; i++) {
-            *domain_buf++ = (char)*enc_ptr++;
+            c = (char)*enc_ptr++;
+            /* Normalize case */
+            if (c >= 'A' && c <= 'Z') {
+                c |= 0x20;
+            }
+
+            *domain_buf++ = c;
             total_written++;
         }
     }

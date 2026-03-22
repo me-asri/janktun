@@ -8,7 +8,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
-#include <strings.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -360,7 +359,7 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
 
         if (domain_len <= ctx->domain_len
             || domain[domain_len - ctx->domain_len - 1] != '.'
-            || strcasecmp(domain + domain_len - ctx->domain_len, ctx->domain) != 0) {
+            || memcmp(domain + domain_len - ctx->domain_len, ctx->domain, ctx->domain_len) != 0) {
             log_d("%s - Refusing to answer DNS query for domain %s",
                 net_saddr_to_str((struct sockaddr*)&saddr), domain);
             rcode = RCODE_REFUSED;
