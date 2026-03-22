@@ -350,8 +350,8 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
 
         dns_ret = dns_parse_query(query_buf, recvd, domain, sizeof(domain), &domain_len, NULL, NULL);
         if (dns_ret != DNSERR_SUCCESS) {
-            log_d("%s - Received invalid DNS query: %d",
-                net_saddr_to_str((struct sockaddr*)&saddr), dns_ret);
+            log_d("%s - Received invalid DNS query: %s",
+                net_saddr_to_str((struct sockaddr*)&saddr), dnserr_str(dns_ret));
             return 0;
         }
         log_t("%s - Received DNS query for domain: %s",
@@ -373,8 +373,9 @@ int handle_dns_events(jank_server_ctx_t* ctx, int fd, int events)
 
         reply_size = dns_compose_reply_empty(query_buf, recvd, rcode, reply_buf, sizeof(reply_buf));
         if (reply_size < 0) {
-            log_w("%s - Failed to compose DNS reply for domain %s: %zd",
-                net_saddr_to_str((struct sockaddr*)&saddr), domain, reply_size);
+            log_w("%s - Failed to compose DNS reply for domain %s: %s",
+                net_saddr_to_str((struct sockaddr*)&saddr), domain,
+                dnserr_str(reply_size));
             return 0;
         }
     retry_send:

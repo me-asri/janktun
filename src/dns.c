@@ -6,6 +6,14 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 
+static const char* DNSERR_STR[] = {
+    [-DNSERR_SUCCESS] = "Success",
+    [-DNSERR_OVERFLOW] = "Data exceeds limit",
+    [-DNSERR_LABEL_TOOLONG] = "Domain label too long",
+    [-DNSERR_NAME_TOOLONG] = "Domain name too long",
+    [-DNSERR_INVALID_QUERY] = "Invalid DNS query",
+};
+
 static ssize_t encode_domain(const char* domain, char* buf, size_t buflen);
 static ssize_t decode_domain(const char* encoded_name, char* domain_buf,
     size_t domain_buflen, size_t* domain_len);
@@ -281,4 +289,13 @@ ssize_t get_qd_size(const char* buf, size_t buflen)
         ptr += (label_len + 1);
     }
     return DNSERR_INVALID_QUERY;
+}
+
+const char* dnserr_str(dnserr_t error)
+{
+    int index = -error;
+    if (index < 0 || index > sizeof(DNSERR_STR) / sizeof(DNSERR_STR[0])) {
+        return NULL;
+    }
+    return DNSERR_STR[index];
 }

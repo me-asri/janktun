@@ -110,3 +110,6 @@ dnserr_t dns_parse_query(const char* buf, size_t buflen, char* domain_name_buf,
 /* Compose empty DNS reply */
 ssize_t dns_compose_reply_empty(char* query, size_t query_len, rcode_t rcode,
     char* buf, size_t buflen);
+
+/* Get string description for dnserr_t error */
+const char* dnserr_str(dnserr_t error);

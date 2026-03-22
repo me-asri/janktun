@@ -465,7 +465,7 @@ bool on_fragment(metadata_t* metadata, char* domain, void* userdata)
     recvd = dns_compose_query(domain, random_bool() ? QTYPE_A : QTYPE_AAAA,
         random_u16(), buf, sizeof(buf));
     if (recvd < 0) {
-        log_e("Failed to compose DNS query: %zd", recvd);
+        log_e("Failed to compose DNS query: %s", dnserr_str(recvd));
         return false;
     }
 
