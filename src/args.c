@@ -20,6 +20,18 @@
 #define DEFAULT_DNS_LISTEN_ADDR "[::]:53"
 #define DEFAULT_LOG_LEVEL LOG_INFO
 
+#define ENV_PREFIX "JANKTUN_"
+#define ENV_VERBOSITY ENV_PREFIX "VERBOSITY"
+#define ENV_DOMAIN ENV_PREFIX "DOMAIN"
+#define ENV_DEST_ADDR ENV_PREFIX "DEST_ADDR"
+#define ENV_DS_SRC_ADDR ENV_PREFIX "DOWNSTREAM_SRC_ADDR"
+#define ENV_DS_ADDR ENV_PREFIX "DOWNSTREAM_ADDR"
+#define ENV_DNS_LISTEN_ADDR ENV_PREFIX "DNS_LISTEN_ADDR"
+#define ENV_RESOLVERS ENV_PREFIX "RESOLVERS"
+#define ENV_DOMAIN_LEN ENV_PREFIX "DOMAIN_LEN"
+#define ENV_DS_LISTEN_ADDR ENV_PREFIX "DOWNSTREAM_LISTEN_ADDR"
+#define ENV_INBOUND_LISTEN_ADDR ENV_PREFIX "INBOUND_LISTEN_ADDR"
+
 static int parse_size_str(const char* str, size_t* out);
 
 static void print_usage(FILE* stream, const char* progname);
@@ -36,7 +48,10 @@ int jank_args_parse(jank_args_t* args, int argc, char** argv)
     }
 
     memset(args, 0, sizeof(*args));
-    args->log_level = DEFAULT_LOG_LEVEL;
+    args->domain = getenv(ENV_DOMAIN);
+    if (log_level_parse(getenv(ENV_VERBOSITY), &args->log_level) != 0) {
+        args->log_level = DEFAULT_LOG_LEVEL;
+    }
 
     if (strcasecmp(argv[1], "server") == 0) {
         args->op = JANK_OP_SERVER;
@@ -52,7 +67,13 @@ int jank_args_parse(jank_args_t* args, int argc, char** argv)
 
 int parse_server_args(jank_args_t* args, int argc, char** argv)
 {
-    args->server.dns_listen_addr = DEFAULT_DNS_LISTEN_ADDR;
+    args->server.dest_addr = getenv(ENV_DEST_ADDR);
+    args->server.ds_src_addr = getenv(ENV_DS_SRC_ADDR);
+    args->server.ds_addr = getenv(ENV_DS_ADDR);
+    args->server.dns_listen_addr = getenv(ENV_DNS_LISTEN_ADDR);
+    if (!args->server.dns_listen_addr) {
+        args->server.dns_listen_addr = DEFAULT_DNS_LISTEN_ADDR;
+    }
 
     int c;
     while ((c = getopt(argc - 1, argv + 1, "hn:v:l:d:s:D:")) != -1) {
@@ -107,20 +128,42 @@ int parse_server_args(jank_args_t* args, int argc, char** argv)
 int parse_client_args(jank_args_t* args, int argc, char** argv)
 {
     int c;
-    size_t resolver_count = 0;
 
-    args->client.max_domain_len = DNS_MAX_DOMAIN_LEN;
+    char* resolvers_env;
+    size_t resolvers_count = 0;
+
+    char* resolver;
+    char* resolver_sptr = NULL;
+
+    resolvers_env = getenv(ENV_RESOLVERS);
+    if (resolvers_env) {
+        strlcpy(args->client.resolvers_env_dup, resolvers_env,
+            sizeof(args->client.resolvers_env_dup));
+
+        resolver = strtok_r(args->client.resolvers_env_dup, " ", &resolver_sptr);
+        while (resolver != NULL && resolvers_count < CLIENT_MAX_RESOLVERS - 1) {
+            args->client.resolvers[resolvers_count++] = resolver;
+            resolver = strtok_r(NULL, " ", &resolver_sptr);
+        }
+        args->client.resolvers[resolvers_count] = NULL;
+    }
+    if (parse_size_str(getenv(ENV_DOMAIN_LEN), &args->client.max_domain_len) != 0) {
+        args->client.max_domain_len = DNS_MAX_DOMAIN_LEN;
+    }
+    args->client.ds_src_addr = getenv(ENV_DS_SRC_ADDR);
+    args->client.ds_listen_addr = getenv(ENV_DS_LISTEN_ADDR);
+    args->client.inbound_listen_addr = getenv(ENV_INBOUND_LISTEN_ADDR);
 
     while ((c = getopt(argc - 1, argv + 1, "hn:v:n:l:d:s:L:r:")) != -1) {
         switch (c) {
         case 'r':
-            if (resolver_count >= CLIENT_MAX_RESOLVERS) {
+            if (resolvers_count >= CLIENT_MAX_RESOLVERS) {
                 print_error(argv[0], "More than %zu resolvers may not be specified.",
                     CLIENT_MAX_RESOLVERS);
                 return -1;
             }
-            args->client.resolvers[resolver_count++] = optarg;
-            args->client.resolvers[resolver_count] = NULL;
+            args->client.resolvers[resolvers_count++] = optarg;
+            args->client.resolvers[resolvers_count] = NULL;
             break;
         case 'L':
             if (parse_size_str(optarg, &args->client.max_domain_len) != 0) {
@@ -156,7 +199,7 @@ int parse_client_args(jank_args_t* args, int argc, char** argv)
             break;
         }
     }
-    args->client.resolvers[resolver_count] = NULL;
+    args->client.resolvers[resolvers_count] = NULL;
 
     if (!args->domain) {
         print_error(argv[0], "No domain name specified");
@@ -233,11 +276,16 @@ int parse_size_str(const char* str, size_t* out)
     char* endptr = NULL;
     size_t num;
 
+    if (!str) {
+        return 1;
+    }
+
     errno = 0;
     num = strtoul(str, &endptr, 10);
     if (*endptr != '\0' || errno == ERANGE) {
         return 1;
     }
+
     *out = num;
     return 0;
 }

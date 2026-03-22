@@ -4,6 +4,8 @@
 #include "log.h"
 #include "client.h"
 
+#define ENV_RESOLVERS_DUP_SIZE 256
+
 typedef enum {
     JANK_OP_SERVER,
     JANK_OP_CLIENT,
@@ -22,6 +24,8 @@ typedef struct {
             const char* inbound_listen_addr;
             const char* ds_listen_addr;
             const char* ds_src_addr;
+
+            char resolvers_env_dup[ENV_RESOLVERS_DUP_SIZE];
         } client;
         struct {
             const char* dns_listen_addr;

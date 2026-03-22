@@ -51,6 +51,10 @@ int log_level_parse(const char* str, log_level_t* level)
 {
     size_t i;
 
+    if (!str) {
+        return 1;
+    }
+
     for (i = 0; i < sizeof(LEVEL_STR) / sizeof(LEVEL_STR[0]); i++) {
         if (strcasecmp(str, LEVEL_STR[i]) == 0) {
             *level = i;

@@ -1,0 +1,37 @@
+[Unit]
+Description=janktun janky tunnel server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/janktun server
+EnvironmentFile=/usr/local/etc/janktun/server/%i.env
+
+DynamicUser=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
+ProtectSystem=strict
+ProtectHome=yes
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectClock=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectProc=invisible
+ProtectHostname=yes
+ProtectKernelTunables=yes
+SystemCallArchitectures=native
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictRealtime=yes
+MemoryDenyWriteExecute=true
+
+Restart=always
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
