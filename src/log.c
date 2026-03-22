@@ -49,7 +49,7 @@ void log_init(log_level_t level)
 
 int log_level_parse(const char* str, log_level_t* level)
 {
-    int i;
+    size_t i;
 
     for (i = 0; i < sizeof(LEVEL_STR) / sizeof(LEVEL_STR[0]); i++) {
         if (strcasecmp(str, LEVEL_STR[i]) == 0) {
@@ -74,6 +74,8 @@ void _log(log_level_t type, int print_errno, const char* file, int line, const c
     int errno_copy = 0;
     char errno_str[STRERROR_BUFSIZE];
 
+    va_list args;
+
     if (print_errno) {
         errno_copy = errno;
     }
@@ -91,7 +93,6 @@ void _log(log_level_t type, int print_errno, const char* file, int line, const c
         fprintf(stderr, "%s %s %s:%d ", time_str, LEVEL_STR[type], file, line);
     }
 
-    va_list args;
     va_start(args, format);
 
     vfprintf(stderr, format, args);
