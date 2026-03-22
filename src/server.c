@@ -482,7 +482,7 @@ bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
     payload_len = protocol_decode_domain(domain, domain_len,
         ctx->domain, ctx->domain_len, &md, payload, sizeof(payload));
     if (payload_len < 0) {
-        log_w("Failed to extract paylaod from domain: %d", payload_len);
+        log_w("Failed to extract paylaod from domain: %s", protoerr_str(payload_len));
         return false;
     }
 
@@ -511,7 +511,8 @@ bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
         return false;
     }
     if (proto_ret != PROTOERR_SUCCESS) {
-        log_e("Failed to add fragment #%u to S%u: %d", md.frag_idx, md.session_id, proto_ret);
+        log_e("Failed to add fragment #%u to S%u: %s", md.frag_idx, md.session_id,
+            protoerr_str(proto_ret));
         asm_session_evict(ctx, asm_session_idx);
         return false;
     }
@@ -537,7 +538,8 @@ bool handle_dns_query(jank_server_ctx_t* ctx, char* domain, size_t domain_len)
         }
         return true;
     } else if (proto_ret != PROTOERR_INCOMPLETE) {
-        log_e("Failed to assemble fragments for S%u: %d", md.session_id, proto_ret);
+        log_e("Failed to assemble fragments for S%u: %s", md.session_id,
+            protoerr_str(proto_ret));
         asm_session_evict(ctx, asm_session_idx);
         return false;
     }

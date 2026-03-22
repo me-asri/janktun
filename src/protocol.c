@@ -11,10 +11,20 @@
 #include "dns.h"
 #include "random.h"
 #include "bits.h"
+#include "log.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 static const char BASE32_ALPHABET[] = "abcdefghijklmnopqrstuvwxyz234567";
+
+static const char* PROTOERR_STR[] = {
+    [-PROTOERR_SUCCESS] = "Success",
+    [-PROTOERR_OVERFLOW] = "Data exceeds limit",
+    [-PROTOERR_INVALID] = "Malformed data",
+    [-PROTOERR_INTER] = "Process interrupted",
+    [-PROTOERR_DUP] = "Duplicate entry",
+    [-PROTOERR_INCOMPLETE] = "Partial data"
+};
 
 static thread_local uint32_t base_session_id = 0;
 
@@ -318,4 +328,13 @@ protoerr_t frag_assembler_assemble(frag_assembler_t* assembler, char** buf, size
     *buflen = ((assembler->max_frag_count - 1) * assembler->max_frag_size)
         + assembler->last_frag_size;
     return PROTOERR_SUCCESS;
+}
+
+const char* protoerr_str(protoerr_t error)
+{
+    int index = -error;
+    if (index < 0 || index > sizeof(PROTOERR_STR) / sizeof(PROTOERR_STR[0])) {
+        return NULL;
+    }
+    return PROTOERR_STR[index];
 }

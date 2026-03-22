@@ -74,3 +74,6 @@ protoerr_t frag_assembler_add(frag_assembler_t* assembler,
 
 /* Try assembling all fragments */
 protoerr_t frag_assembler_assemble(frag_assembler_t* assembler, char** buf, size_t* buflen);
+
+/* Get string description for protoerr_t error */
+const char* protoerr_str(protoerr_t error);

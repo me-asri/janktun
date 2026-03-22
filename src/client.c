@@ -445,7 +445,7 @@ int send_data_as_dns(jank_client_ctx_t* ctx, char* buf, size_t buflen)
         buf, buflen, on_fragment, ctx);
     if (ret != PROTOERR_SUCCESS) {
         if (ret != PROTOERR_INTER) {
-            log_e("Failed to encode data as DNS query");
+            log_e("Failed to encode data as DNS query: %s", protoerr_str(ret));
         }
         return -1;
     }
