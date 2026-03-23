@@ -14,6 +14,7 @@ While 'spoof tunneling' is not a new concept, both endpoints are expected to be 
 
 ## Requirements
 
+- Linux (*BSD/macOS/Windows is not supported)
 - Make
 - GCC >= 14 (Recent versions of Clang may also work)
 
