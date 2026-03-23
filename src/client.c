@@ -313,7 +313,7 @@ int handle_ds_events(jank_client_ctx_t* ctx, int fd, int events)
             elog_w("Failed to read error on downstream socket");
         } else {
             errno = error;
-            elog_w("Destination socket error");
+            elog_w("Downsteram socket error");
         }
     }
     if (events & EPOLLIN) {
@@ -379,16 +379,17 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
     int nrecvd;
 
     int i;
+    int ret = 0;
 
     if (events & EPOLLERR) {
         error = 0;
         errorlen = sizeof(error);
 
         if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errorlen) != 0) {
-            elog_w("Failed to read error on destination socket");
+            elog_w("Failed to read error on inbound socket");
         } else {
             errno = error;
-            elog_w("Destination socket error");
+            elog_w("Inbound socket error");
         }
     }
     if (events & EPOLLIN) {
@@ -429,12 +430,12 @@ int handle_inbound_events(jank_client_ctx_t* ctx, int fd, int events)
                     ctx->udp_msgs[i].msg_hdr.msg_iov[0].iov_base,
                     ctx->udp_msgs[i].msg_len)
                 != 0) {
-                return -1;
+                ret = 1;
             }
         }
     }
 
-    return 0;
+    return ret;
 }
 
 int send_data_as_dns(jank_client_ctx_t* ctx, char* buf, size_t buflen)
