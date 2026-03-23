@@ -150,8 +150,8 @@ protoerr_t protocol_encode_domain(
         index += ret;
         domain[index++] = '.';
         /* finally the base domain */
-        domain[index++] = '\0';
-        strcat(domain, base_domain);
+        memcpy(domain + index, base_domain, base_domain_len);
+        domain[index + base_domain_len] = '\0';
 
         if (!callback(&md, domain, userdata)) {
             return PROTOERR_INTER;
