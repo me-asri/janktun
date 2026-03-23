@@ -47,7 +47,7 @@ Usage: janktun [OPERATION] [OPTION...]
 
 Options:
    -n <domain>       domain name
-   -v <verbosity>    set logging verbosity (DEBUG, INFO, ERROR - default: INFO)
+   -v <verbosity>    set logging verbosity (DEBUG, INFO, WARN, ERROR - default: INFO)
    -h                show this help message
 
  Oeprations:

@@ -238,9 +238,9 @@ void print_usage(FILE* stream, const char* progname)
                                 "   -n <domain>       domain name\n"
                                 "   -v <verbosity>    set logging verbosity "
 #ifndef NDEBUG
-                                "(TRACE, DEBUG, INFO, ERROR - default: %2$s)\n"
+                                "(TRACE, DEBUG, INFO, WARN, ERROR - default: %2$s)\n"
 #else
-                                "(DEBUG, INFO, ERROR - default: %2$s)\n"
+                                "(DEBUG, INFO, WARN, ERROR - default: %2$s)\n"
 #endif
                                 "   -h                show this help message\n"
                                 "\n"
