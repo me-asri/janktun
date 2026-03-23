@@ -10,10 +10,15 @@ typedef enum {
 
 #define DEFAULT_LOG_LEVEL LOG_INFO
 
+enum log_flag {
+    LOG_NO_COLOR = 1 << 0,
+    LOG_NO_TIME = 1 << 1
+};
+
 extern log_level_t _log_level;
 
 /* Initialize logger */
-void log_init(log_level_t level);
+void log_init(log_level_t level, int flags);
 
 /* Parse log level from string */
 int log_level_parse(const char* str, log_level_t* level);

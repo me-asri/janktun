@@ -1,7 +1,6 @@
 #include "log.h"
 
 #include <stdio.h>
-#include <stdbool.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +23,7 @@
 #define STRERROR_BUFSIZE 256
 
 log_level_t _log_level = DEFAULT_LOG_LEVEL;
-static bool log_colored = false;
+static int log_flags = LOG_NO_COLOR;
 
 static const char* LEVEL_STR[] = {
     [LOG_TRACE] = "TRACE",
@@ -41,10 +40,16 @@ static const char* LEVEL_STR_COLOR[] = {
     [LOG_ERROR] = ANSI_FG_RED("ERROR"),
 };
 
-void log_init(log_level_t level)
+void log_init(log_level_t level, int flags)
 {
     _log_level = level;
-    log_colored = (isatty(fileno(stderr)) != 0);
+    log_flags = flags;
+
+    if (!(log_flags & LOG_NO_COLOR)) {
+        if (isatty(fileno(stderr)) == 0) {
+            log_flags |= LOG_NO_COLOR;
+        }
+    }
 }
 
 int log_level_parse(const char* str, log_level_t* level)
@@ -84,23 +89,36 @@ void _log(log_level_t type, int print_errno, const char* file, int line, const c
         errno_copy = errno;
     }
 
-    timer = time(NULL);
-    localtime_r(&timer, &time_info);
-    strftime(time_str, sizeof(time_str), "%H:%M:%S", &time_info);
+    if (log_flags & LOG_NO_TIME) {
+        time_str[0] = '\0';
+    } else {
+        timer = time(NULL);
+        localtime_r(&timer, &time_info);
+        if (strftime(time_str, sizeof(time_str), "%H:%M:%S", &time_info) == 0) {
+            time_str[0] = '\0';
+        }
+    }
 
     flockfile(stderr);
 
-    if (log_colored) {
-        fprintf(stderr, ANSI_FG_GREY("%s") " %s " ANSI_FG_CYAN("%s") ":" ANSI_FG_BRIGHT_CYAN("%d") " ",
-            time_str, LEVEL_STR_COLOR[type], file, line);
+    if (log_flags & LOG_NO_COLOR) {
+        if (*time_str) {
+            fprintf(stderr, "%s %s %s:%d ", time_str, LEVEL_STR[type], file, line);
+        } else {
+            fprintf(stderr, "%s %s:%d ", LEVEL_STR[type], file, line);
+        }
     } else {
-        fprintf(stderr, "%s %s %s:%d ", time_str, LEVEL_STR[type], file, line);
+        if (*time_str) {
+            fprintf(stderr, ANSI_FG_GREY("%s") " %s " ANSI_FG_CYAN("%s") ":" ANSI_FG_BRIGHT_CYAN("%d") " ",
+                time_str, LEVEL_STR_COLOR[type], file, line);
+        } else {
+            fprintf(stderr, "%s " ANSI_FG_CYAN("%s") ":" ANSI_FG_BRIGHT_CYAN("%d") " ",
+                LEVEL_STR_COLOR[type], file, line);
+        }
     }
 
     va_start(args, format);
-
     vfprintf(stderr, format, args);
-
     va_end(args);
 
     if (print_errno && errno_copy != 0) {
