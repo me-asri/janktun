@@ -77,3 +77,11 @@ Options:
 This is why **janktun** is significantly faster than standard bidirectional DNS tunneling; it removes the resolver bottleneck from the downstream path while keeping the client-side configuration simple and "spoof-free."
 
 > **janktun** does *NOT* perform any encryption or authentication on transmitted data; the underlying tunnelled protocol is expected to perfom them.
+
+## Disclaimer: Embrace the Jank
+
+As the name implies, **janktun** is a "duct-tape-and-prayer" solution to a problem that shouldn't exist.
+
+It lacks native self-healing or retransmission logic; as such, you should expect instability, frequent breakage, and high packet loss as part of the core experience.
+
+**​On a serious note**: Use this tool with extreme caution. Bypassing state-level internet shutdowns or censorship carries potential legal and personal risks. You assume all responsibility for how and where this software is deployed.
