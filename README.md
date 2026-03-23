@@ -66,3 +66,13 @@ Options:
    -L <length>       maximum domain length (default: 253)
    -r <addr[:port]>  resolver(s), can be specified multiple times up to 16 times
 ```
+
+## Architecture: IP Spoof + DNS Tunnel Combo
+
+- **Upstream (client → server)**: The client encapsulates UDP datagrams (e.g., WireGuard) into DNS queries, which are routed to the server via recursive resolvers.
+
+- **Downsteram (server → client)**: The server transmits raw UDP datagrams directly to the client by spoofing the source address to match a trusted endpoint.
+
+This is why **janktun** is significantly faster than standard bidirectional DNS tunneling; it removes the resolver bottleneck from the downstream path while keeping the client-side configuration simple and "spoof-free."
+
+> **janktun** does *NOT* perform any encryption or authentication on transmitted data; the underlying tunnelled protocol is expected to perfom them.
