@@ -21,6 +21,8 @@
 
 #define ENV_PREFIX "JANKTUN_"
 #define ENV_VERBOSITY ENV_PREFIX "VERBOSITY"
+#define ENV_LOG_NO_TIME ENV_PREFIX "LOG_NO_TIME"
+#define ENV_LOG_NO_COLOR ENV_PREFIX "LOG_NO_COLOR"
 #define ENV_DOMAIN ENV_PREFIX "DOMAIN"
 #define ENV_DEST_ADDR ENV_PREFIX "DEST_ADDR"
 #define ENV_DS_SRC_ADDR ENV_PREFIX "DOWNSTREAM_SRC_ADDR"
@@ -41,6 +43,8 @@ static int parse_client_args(jank_args_t* args, int argc, char** argv);
 
 int jank_args_parse(jank_args_t* args, int argc, char** argv)
 {
+    char* env;
+
     if (argc < 2 || argv[1][0] == '-') {
         print_error(argv[0], "No operation specified");
         return -1;
@@ -50,6 +54,12 @@ int jank_args_parse(jank_args_t* args, int argc, char** argv)
     args->domain = getenv(ENV_DOMAIN);
     if (log_level_parse(getenv(ENV_VERBOSITY), &args->log_level) != 0) {
         args->log_level = DEFAULT_LOG_LEVEL;
+    }
+    if ((env = getenv(ENV_LOG_NO_COLOR)) && *env) {
+        args->log_flags |= LOG_NO_COLOR;
+    }
+    if ((env = getenv(ENV_LOG_NO_TIME)) && *env) {
+        args->log_flags |= LOG_NO_TIME;
     }
 
     if (strcmp(argv[1], "server") == 0) {

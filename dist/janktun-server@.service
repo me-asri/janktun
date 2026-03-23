@@ -6,6 +6,7 @@ After=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/janktun server
+Environment=JANKTUN_LOG_NO_TIME=1
 EnvironmentFile=/usr/local/etc/janktun/server/%i.env
 
 DynamicUser=yes

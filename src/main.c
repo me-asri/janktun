@@ -19,7 +19,8 @@ int main(int argc, char** argv)
         return ret;
     }
 
-    log_init(args.log_level, 0);
+    log_init(args.log_level, args.log_flags);
+
     switch (args.op) {
     case JANK_OP_CLIENT:
         return run_client(&args);

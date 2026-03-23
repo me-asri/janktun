@@ -14,6 +14,7 @@ typedef enum {
 typedef struct {
     jank_op_t op;
     log_level_t log_level;
+    int log_flags;
 
     const char* domain;
 
