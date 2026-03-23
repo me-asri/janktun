@@ -7,7 +7,6 @@
 #include <stdio.h>
 
 #include <errno.h>
-#include <strings.h>
 #include <unistd.h>
 
 #include "log.h"
@@ -53,10 +52,10 @@ int jank_args_parse(jank_args_t* args, int argc, char** argv)
         args->log_level = DEFAULT_LOG_LEVEL;
     }
 
-    if (strcasecmp(argv[1], "server") == 0) {
+    if (strcmp(argv[1], "server") == 0) {
         args->op = JANK_OP_SERVER;
         return parse_server_args(args, argc, argv);
-    } else if (strcasecmp(argv[1], "client") == 0) {
+    } else if (strcmp(argv[1], "client") == 0) {
         args->op = JANK_OP_CLIENT;
         return parse_client_args(args, argc, argv);
     } else {
