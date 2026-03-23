@@ -4,6 +4,7 @@ WORKDIR /build
 COPY . .
 
 RUN make -j$(nproc) \
+    && make strip \
     && make install PREFIX=/opt/janktun
 
 FROM gcr.io/distroless/cc-debian13:latest AS runner
