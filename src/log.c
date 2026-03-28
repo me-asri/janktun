@@ -125,7 +125,7 @@ void _log(log_level_t type, int print_errno, const char* file, int line, const c
         if (strerror_r(errno_copy, errno_str, sizeof(errno_str)) == 0) {
             fprintf(stderr, " (%s)", errno_str);
         } else {
-            fputs(" (Unknown error)", stderr);
+            fprintf(stderr, " (Unknown error %d)", errno_copy);
         }
     }
 
