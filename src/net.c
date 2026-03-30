@@ -169,17 +169,3 @@ bool net_saddr_match(const struct sockaddr* a, socklen_t a_len,
     }
     return (memcmp(a, b, a_len) == 0);
 }
-
-int net_saddr_set_port(struct sockaddr* a, uint16_t port)
-{
-    switch (a->sa_family) {
-    case AF_INET:
-        ((struct sockaddr_in*)a)->sin_port = htons(port);
-        return 0;
-    case AF_INET6:
-        ((struct sockaddr_in6*)a)->sin6_port = htons(port);
-        return 0;
-    default:
-        return 1;
-    }
-}

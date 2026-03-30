@@ -28,6 +28,3 @@ int net_resolve_saddr(const char* host, int family,
 /* Check whether two socket addresses match */
 bool net_saddr_match(const struct sockaddr* a, socklen_t a_len,
     const struct sockaddr* b, socklen_t b_len);
-
-/* Set port number of a IPv4/IPv6 socket address */
-int net_saddr_set_port(struct sockaddr* a, uint16_t port);
