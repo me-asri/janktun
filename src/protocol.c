@@ -26,8 +26,6 @@ static const char* PROTOERR_STR[] = {
     [-PROTOERR_INCOMPLETE] = "Partial data"
 };
 
-static thread_local uint32_t base_session_id = 0;
-
 static ssize_t base32_decode(const char* input, char* buf, size_t buflen);
 static ssize_t base32_delim_encode(const char* buf, size_t buflen, char* out,
     size_t outlen, char delim, size_t n_delim);
@@ -66,13 +64,10 @@ protoerr_t protocol_encode_domain(
     const char* buf, size_t buflen,
     proto_domain_cb_t callback, void* userdata)
 {
-    if (base_session_id == 0) {
-        base_session_id = random_u32();
-    }
+    static thread_local bool initialized = false;
+    static thread_local uint32_t base_id = 0;
 
-    metadata_t md = {
-        .session_id = (base_session_id++) & 0x01FFFFFF,
-    };
+    metadata_t md;
 
     size_t remaining;
     size_t label_len;
@@ -89,6 +84,14 @@ protoerr_t protocol_encode_domain(
     ssize_t ret;
 
     size_t i;
+
+    if (!initialized) {
+        base_id = random_u32() & 0x01FFFFFF;
+        initialized = true;
+    }
+
+    md.session_id = base_id;
+    base_id = (base_id + 1) & 0x01FFFFFF;
 
     if (max_domain_len > DNS_MAX_DOMAIN_LEN) {
         return PROTOERR_OVERFLOW;
