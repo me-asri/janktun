@@ -1,3 +1,6 @@
+#undef _GNU_SOURCE
+#define _POSIX_C_SOURCE 200112L
+
 #include "log.h"
 
 #include <stdio.h>
