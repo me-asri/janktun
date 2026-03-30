@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdbool.h>
-
 #include <netinet/in.h>
 
 #ifndef INET6_ADDRSTRLEN

@@ -1,11 +1,9 @@
 #include "sigfd.h"
 
 #include <stddef.h>
-#include <stdbool.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <string.h>
-#include <threads.h>
 
 #include <unistd.h>
 #include <signal.h>

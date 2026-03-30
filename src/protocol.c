@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
-#include <stdbool.h>
-#include <threads.h>
 
 #include <arpa/inet.h>
 

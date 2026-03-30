@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <stdbool.h>
 
 /* Create a timerfd expiring after specified milliseconds */
 int timerfd_open(uint64_t millis, bool repeating);

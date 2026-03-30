@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <stdbool.h>
 
 /* Generate a pseudo-random unsigned 32-bit integer */
 uint32_t random_u32();

@@ -2,9 +2,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <threads.h>
 #include <time.h>
-#include <stdbool.h>
 
 #define XORSHIFT_FALLBACK_STATE 123456789u
 

@@ -4,8 +4,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <stdbool.h>
-#include <threads.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>

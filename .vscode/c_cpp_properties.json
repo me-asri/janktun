@@ -10,7 +10,7 @@
             ],
             "compilerPath": "/usr/bin/gcc-14",
             "intelliSenseMode": "linux-gcc-x64",
-            "cStandard": "c11"
+            "cStandard": "c23"
         }
     ],
     "version": 4
